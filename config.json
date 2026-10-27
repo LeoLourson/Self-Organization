@@ -1,0 +1,51 @@
+{
+  "agents": 5,
+  "horizon": 4,
+  "history_weeks": 52,
+  "first_origin": 52,
+  "worker_words": 250,
+  "data": "data/series.csv",
+  "subagent_type": "net-agent",
+  "api": {
+    "max_tokens": 16000,
+    "max_requests": 5000
+  },
+  "engines": {
+    "deepseek": {
+      "base_url": "https://api.deepseek.com",
+      "key_env": "DEEPSEEK_API_KEY"
+    },
+    "anthropic": {
+      "base_url": "https://api.anthropic.com/v1/",
+      "key_env": "ANTHROPIC_API_KEY"
+    }
+  },
+  "profiles": {
+    "deepseek": {
+      "transport": "api",
+      "engine": "deepseek",
+      "model": "deepseek-flash",
+      "settings": {}
+    },
+    "sonnet_api": {
+      "transport": "api",
+      "engine": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "settings": {}
+    },
+    "sonnet_sub": {
+      "transport": "subagent",
+      "engine": "claude-code",
+      "model": "claude-sonnet-5-5",
+      "settings": {}
+    }
+  },
+  "sandbox": {
+    "paths": [
+      "~/.claude/CLAUDE.md",
+      "~/.claude/skills",
+      "~/.claude/projects/c--Users-LeoLeon-Documents--------------------------------------------/memory"
+    ],
+    "disable_plugins": true
+  }
+}

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+/STOP
+/backup/
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+.claude/settings.local.json
