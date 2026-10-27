@@ -24,6 +24,7 @@ from . import judge, llm, series, store
 CONDITIONS = ("open", "closed")
 TERMINAL = ("done", "failed")
 MAX_INVALID = 3
+EMPTY_RETRIES = 3
 
 
 # --- описание прогона ------------------------------------------------------
@@ -313,7 +314,14 @@ def advance(ident):
         pending = state["pending"]
         messages = [{"role": "system", "content": system_prompt()}, *state["histories"][pending["agent"]],
                     {"role": "user", "content": pending["message"]}]
-        accept(state, llm.call(profile, pending["request_id"], messages))
+        # DeepSeek изредка отдаёт пустой ответ после рассуждения; такой ответ запрашивается заново,
+        # и агент о нём не узнаёт. Три пустых подряд идут в accept как некорректный ответ.
+        for attempt in range(EMPTY_RETRIES):
+            scope = pending["request_id"] if attempt == 0 else f"{pending['request_id']}#{attempt}"
+            answer = llm.call(profile, scope, messages)
+            if answer:
+                break
+        accept(state, answer)
     return status(ident)
 
 

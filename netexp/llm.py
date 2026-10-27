@@ -8,7 +8,7 @@ from . import store
 
 
 def call(profile, scope, messages):
-    """Ответ модели на messages. scope — ID запроса прогона: повтор того же запроса берётся из кэша."""
+    """Ответ модели на messages; может быть пустой строкой. scope — ID запроса прогона: повтор берётся из кэша."""
     store.check_stop()
     cfg = store.config()
     api, engine = cfg["api"], cfg["engines"][profile["engine"]]
@@ -21,8 +21,6 @@ def call(profile, scope, messages):
         db.execute("BEGIN IMMEDIATE")
         row = db.execute("SELECT response FROM requests WHERE id=?", (key,)).fetchone()
         if row:
-            if not row[0]:
-                raise RuntimeError("Сохранён пустой ответ API")
             return row[0]
         if db.execute("SELECT COUNT(*) FROM requests").fetchone()[0] >= api["max_requests"]:
             raise RuntimeError("Достигнут общий лимит запросов max_requests")
@@ -36,8 +34,6 @@ def call(profile, scope, messages):
         # Пустой ответ тоже сохраняется: он оплачен и входит в учёт расхода.
         db.execute("INSERT INTO requests VALUES (?, ?, ?, ?)", (key, profile["model"], answer, json.dumps(usage)))
         db.commit()
-        if not answer:
-            raise RuntimeError("API вернул пустой ответ; запрос сохранён для учёта расхода")
         return answer
     finally:
         db.close()
