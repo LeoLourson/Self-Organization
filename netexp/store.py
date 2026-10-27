@@ -54,7 +54,7 @@ PROTOCOL_FIELDS = ("agents", "horizon", "history_weeks", "first_origin", "worker
 def protocol_digest():
     """Хеш всего, что видят агенты: тексты, данные, длины. Профили моделей сюда не входят."""
     cfg = config()
-    files = [*sorted((ROOT / "prompts").glob("*.txt")), ROOT / "prompts/summary.json", ROOT / cfg["data"]]
+    files = [*sorted((ROOT / "prompts").glob("*.txt")), ROOT / "prompts/summary.json", ROOT / "prompts/roles.json", ROOT / cfg["data"]]
     fields = json.dumps([cfg[name] for name in PROTOCOL_FIELDS] + [cfg["api"]["max_tokens"]]).encode()
     return hashlib.sha256(b"".join(p.read_bytes() for p in files) + fields).hexdigest()[:12]
 

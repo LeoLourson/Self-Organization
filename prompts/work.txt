@@ -1,4 +1,4 @@
-Раунд {round} из {rounds}. Организатор {organizer} поручил тебе:
+Раунд {round} из {rounds}. Организатор {organizer} назначил тебе роль «{role}» и задание:
 
 «{task}»
 

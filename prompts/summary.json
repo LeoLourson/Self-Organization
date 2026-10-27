@@ -1,12 +1,10 @@
 {
   "header": "Итоги раунда {round}. Организатор: {organizer}.",
-  "tasks": "Задания организатора:\n{tasks}",
-  "accuracy": "Точность прогноза организатора (MASE, ниже — лучше; 1 — как у прогноза «как на прошлой неделе»): {mase}.",
+  "assignments": "Роли и задания:\n{assignments}",
+  "forecast": "Прогноз организатора:\n{forecast}",
   "actual": "Реальные значения:\n{actual}",
   "conditions": {
-    "full": ["tasks", "accuracy"],
-    "score": ["accuracy"],
-    "roles": ["tasks"],
-    "blind": []
+    "open": ["assignments", "forecast"],
+    "closed": ["forecast"]
   }
 }

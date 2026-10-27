@@ -25,7 +25,8 @@
    `{"request_id": "...", "content": "ответ дословно",
      "execution": {"engine": "claude-code", "model": "<модель из request>", "agent_id": "<ID субагента>"}}`
 5. `python run.py submit --id ID --file runs/answers/REQUEST_ID.json`, затем снова п. 2.
-6. Повторяй до `done: true`. `phase: failed` — три некорректных ответа подряд;
+6. После голосования `advance` сам вызывает судью через API (нужен `DEEPSEEK_API_KEY`)
+   и субагентов больше не запрашивает. Повторяй до `done: true`. `phase: failed` — три некорректных ответа подряд;
    сообщи пользователю.
 
 Пять субагентов одного прогона используются только в нём. Для следующего прогона
