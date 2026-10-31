@@ -48,7 +48,7 @@ def profile(name):
     return {"id": name, **value}
 
 
-PROTOCOL_FIELDS = ("agents", "horizon", "history_weeks", "first_origin", "worker_words", "data")
+PROTOCOL_FIELDS = ("agents", "horizon", "history_weeks", "first_origin", "worker_words", "task_words", "data")
 
 
 def protocol_digest():

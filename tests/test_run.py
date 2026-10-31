@@ -129,7 +129,34 @@ class RunTests(unittest.TestCase):
             result = run.advance(ident)
         self.assertEqual(result["phase"], "failed")
         history = store.read_json(store.run_file("state", ident))["histories"]["A1"]
-        self.assertIn("Ответ не принят", history[2]["content"])
+        self.assertIn("Ответ не принят", history[1]["content"])
+        # Некорректный ответ в историю не попадает: в ней только запросы среды.
+        self.assertTrue(all(m["role"] == "user" for m in history))
+
+    def test_task_length_limit(self):
+        task = " ".join(["слово"] * 61)
+        bad = json.dumps({"assignments": {a: {"role": ROLES[0], "task": task}
+                                          for a in ("A2", "A3", "A4", "A5")}}, ensure_ascii=False)
+        with patch.object(llm, "call", lambda p, s, m: bad):
+            ident = run.start("deepseek", "closed")["id"]
+            result = run.advance(ident)
+        self.assertEqual(result["phase"], "failed")
+        history = store.read_json(store.run_file("state", ident))["histories"]["A1"]
+        self.assertIn("длиннее 60 слов", history[-1]["content"])
+        self.assertNotIn(bad, json.dumps(history, ensure_ascii=False))
+
+    def test_worker_answer_length_limit(self):
+        def long_answer(messages, tag="?"):
+            if '{"assignments"' in messages[-1]["content"]:
+                return fake_answer(messages[-1]["content"], tag)
+            return " ".join(["слово"] * 151)
+        with patch.object(llm, "call", lambda p, s, m: long_answer(m, s)):
+            ident = run.start("deepseek", "closed")["id"]
+            result = run.advance(ident)
+        self.assertEqual(result["phase"], "failed")
+        state = store.read_json(store.run_file("state", ident))
+        self.assertEqual(state["rounds"][0]["answers"], {})
+        self.assertIn("длиннее 150 слов", state["histories"]["A2"][-1]["content"])
 
     def test_private_answers_not_seen_by_others(self):
         with patch.object(llm, "call", self.fake_call), patch.object(llm, "choice", self.fake_choice):

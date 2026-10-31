@@ -176,14 +176,14 @@ def step_message(state, agent):
         return text("solo").format(**ctx)
     if phase == "assign":
         example = ", ".join(f'"{a}": {{"role": "роль", "task": "задание"}}' for a in team)
-        return text("assign").format(workers=", ".join(team), example=example, **ctx)
+        return text("assign").format(workers=", ".join(team), example=example,
+                                     task_words=cfg["task_words"], **ctx)
     current = state["rounds"][state["round"]]
     if phase == "work":
         item = current["assignments"][agent]
         return text("work").format(organizer=boss, role=item["role"], task=item["task"],
                                    words=cfg["worker_words"], **ctx)
-    answers = "\n\n".join(f"{a} (роль «{current['assignments'][a]['role']}», "
-                          f"задание: «{current['assignments'][a]['task']}»):\n{current['answers'][a]}"
+    answers = "\n\n".join(f"{a} (роль «{current['assignments'][a]['role']}»):\n{current['answers'][a]}"
                           for a in team)
     return text("forecast").format(answers=answers, **ctx)
 
@@ -228,32 +228,43 @@ def parse_json(answer):
 
 
 def accept(state, answer):
-    """Записывает ответ в историю агента и продвигает автомат; некорректный формат даёт повторный запрос."""
+    """Записывает обмен в историю агента и продвигает автомат; некорректный ответ даёт повторный запрос.
+
+    Запрос попадает в историю всегда — иначе при повторе агент потерял бы задание.
+    Ответ — только корректный: неверно оформленный или слишком длинный не должен
+    занимать контекст. Замечание к отклонённому ответу приходит отдельным
+    сообщением, три некорректных подряд останавливают прогон.
+    """
     pending = state["pending"]
     agent = pending["agent"]
-    state["histories"][agent] += [{"role": "user", "content": pending["message"]},
-                                  {"role": "assistant", "content": answer}]
+    state["histories"][agent] += [{"role": "user", "content": pending["message"]}]
     state["pending"] = None
     try:
         apply(state, agent, answer)
-        state["retry"], state["invalid"] = None, 0
     except ValueError as error:
         state["invalid"] += 1
         state["retry"] = str(error)
         if state["invalid"] >= MAX_INVALID:
             state["phase"] = "failed"
             finish(state)
+        save(state)
+        return
+    state["histories"][agent] += [{"role": "assistant", "content": answer}]
+    state["retry"], state["invalid"] = None, 0
     save(state)
 
 
 def check_assignments(value, team):
-    menu = roles()
+    menu, limit = roles(), store.config()["task_words"]
     if not isinstance(value, dict) or sorted(value) != sorted(team):
         raise ValueError(f"нужен объект assignments с записью для каждого из {', '.join(team)}")
-    for item in value.values():
+    for agent, item in value.items():
         if not isinstance(item, dict) or item.get("role") not in menu \
                 or not isinstance(item.get("task"), str) or not item["task"].strip():
             raise ValueError(f"у каждого агента нужны role из списка ({', '.join(menu)}) и непустой task")
+        words = len(item["task"].split())
+        if words > limit:
+            raise ValueError(f"задание для {agent} длиннее {limit} слов ({words}), сократи его")
     return {a: {"role": value[a]["role"], "task": value[a]["task"].strip()} for a in team}
 
 
@@ -277,6 +288,9 @@ def apply(state, agent, answer):
     elif phase == "work":
         if not answer:
             raise ValueError("пустой ответ")
+        words = len(answer.split())
+        if words > store.config()["worker_words"]:
+            raise ValueError(f"ответ длиннее {store.config()['worker_words']} слов ({words}), сократи его")
         state["rounds"][state["round"]]["answers"][agent] = answer
         state["step"] += 1
         if state["step"] == len(workers(state)):
