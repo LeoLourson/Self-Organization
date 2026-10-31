@@ -27,7 +27,7 @@ import json
 import random
 import re
 
-from . import judge, llm, series, store
+from . import judge, llm, observe, series, store
 
 CONDITIONS = ("open", "closed", "solo")
 TERMINAL = ("done", "failed")
@@ -504,4 +504,9 @@ def finish(state):
         "accuracy_rank": accuracy_rank, "judge_allocation_rank": judge_rank,
         "debriefs": state["debriefs"], "votes": state["votes"], "vote_rankings": rankings,
         "vote_tau": agreement, "judgments": state["judgments"], "sessions": state["sessions"],
+        # Наблюдаемые свойства социума по словарю обзора: роли, связи, конвенции.
+        "observables": {"role_matrix": observe.role_matrix(state["rounds"]),
+                        "specialization": observe.specialization(state["rounds"]),
+                        "links": observe.links(state["rounds"]),
+                        "conventions": observe.conventions(state["rounds"])},
         "system": system_prompt(), "histories": state["histories"]})

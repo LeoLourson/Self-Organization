@@ -10,7 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from netexp import analysis, llm, run, sandbox, store
+from netexp import analysis, llm, observe, run, sandbox, store
 
 PROJECT = store.ROOT
 ROLES = list(store.read_json(PROJECT / "prompts/roles.json"))
@@ -529,6 +529,26 @@ class AnalysisTests(unittest.TestCase):
         self.assertIn("Независимый ансамбль", markdown)
         self.assertIn("2, ", markdown)           # ансамбль одиночек из двух прогонов
         self.assertNotIn("None", markdown)
+
+
+class ObserveTests(unittest.TestCase):
+    def test_specialization_links_conventions(self):
+        rounds = [
+            {"organizer": "A1", "assignments": {"A2": {"role": "статистик"}, "A3": {"role": "историк"},
+                                                 "A4": {"role": "критик"}, "A5": {"role": "календарь"}}},
+            {"organizer": "A2", "assignments": {"A1": {"role": "статистик"}, "A3": {"role": "историк"},
+                                                 "A4": {"role": "моделист"}, "A5": {"role": "календарь"}}},
+        ]
+        self.assertEqual(observe.specialization(rounds)["A3"], 1.0)  # обе роли историка
+        self.assertEqual(observe.specialization(rounds)["A4"], 0.5)  # критик и моделист
+        self.assertEqual(observe.links(rounds)["A1"]["A2"], 1)
+        self.assertEqual(observe.conventions(rounds), [0.0, 0.5])  # повторились историк и календарь
+
+    def test_empty_rounds(self):
+        self.assertEqual(observe.role_matrix([]), {})
+        self.assertEqual(observe.specialization([]), {})
+        self.assertEqual(observe.links([]), {})
+        self.assertEqual(observe.conventions([]), [])
 
 
 if __name__ == "__main__":
