@@ -330,6 +330,20 @@ def synthetic_rounds(fixed):
     return rounds
 
 
+def rounds_with_sets(sets):
+    """Раунды с заданным составом ролей в каждом; центры — по ротации."""
+    rounds = []
+    for index, current in enumerate(sets):
+        organizer = f"A{index + 1}"
+        workers = [a for a in ("A1", "A2", "A3", "A4", "A5") if a != organizer]
+        roles_list = list(current)
+        rounds.append({"organizer": organizer, "origin": 0,
+                       "assignments": {a: {"role": roles_list[i % len(roles_list)], "task": ""}
+                                       for i, a in enumerate(workers)},
+                       "answers": {}, "mase": 0.5, "forecast": [], "actual": []})
+    return rounds
+
+
 def ballot(x, y, value):
     """Пара с перевесом value в пользу x (порядок пары канонический)."""
     return {"pair": [x, y], "one": x, "logprob": {x: value / 2, y: -value / 2}}
@@ -388,6 +402,29 @@ class AnalysisTests(unittest.TestCase):
         self.assertLess(shuffled["observed"], value["observed"])
         self.assertGreater(shuffled["p"], value["p"])
 
+    def test_convention_against_independent_choice(self):
+        one, two = frozenset(ROLES[:4]), frozenset(ROLES[1:5])
+        # один и тот же состав во всех раундах: повтор неотличим от общего предпочтения
+        value = analysis.convention(rounds_with_sets([one] * 5), [one] * 5)
+        self.assertEqual((value["observed"], value["transitions"]), (4, 4))
+        self.assertEqual(value["expected"], 4.0)
+        # чередование двух составов: повторов меньше, чем при независимом выборе
+        alternating = [one, two, one, two, one]
+        value = analysis.convention(rounds_with_sets(alternating), alternating)
+        self.assertEqual(value["observed"], 0)
+        self.assertGreater(value["expected"], 1.5)
+
+    def test_reciprocity(self):
+        """Взаимность делегирования: согласованность взаимных мест в ранжированиях."""
+        agents = run.names()
+        # все предпочитают меньшие имена: оценки согласованы, τ положителен
+        linear = {v: linear_ballots([a for a in agents if a != v]) for v in agents}
+        self.assertAlmostEqual(analysis.reciprocity(linear), 1 / 3)
+        # цикл предпочтений: чем выше i ставит j, тем ниже j ставит i
+        cyclic = {v: {"ranking": [agents[(i + t) % 5] for t in range(1, 5)], "reason": ""}
+                 for i, v in enumerate(agents)}
+        self.assertAlmostEqual(analysis.reciprocity(cyclic), -7 / 9)
+
     def test_linearity(self):
         agents = ["A1", "A2", "A3", "A4", "A5"]
         order = {a: i for i, a in enumerate(agents)}
@@ -417,9 +454,12 @@ class AnalysisTests(unittest.TestCase):
         self.write_run("c" * 24, "open", votes, fixed=True)
         markdown = analysis.report()
         self.assertIn("## Условие `open`", markdown)
+        self.assertIn("Конвенция состава ролей", markdown)
         self.assertIn("Закрепление ролей", markdown)
-        self.assertIn("Голосование", markdown)
+        self.assertIn("Голосование (делегирование)", markdown)
         self.assertIn("A1 > A2 > A3 > A4 > A5", markdown)
+        self.assertIn("Взаимность", markdown)
+        self.assertIn("literature-review.up.railway.app", markdown)
         self.assertNotIn("None", markdown)
         # Отчёт воспроизводим: фиксированное зерно
         self.assertEqual(analysis.report(), markdown)

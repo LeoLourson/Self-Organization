@@ -1,12 +1,16 @@
 """Анализ прогонов: какие роли раздают организаторы, закрепляются ли роли за агентами,
-какую иерархию выстраивает голосование. Запросов к моделям нет.
+повторяется ли состав ролей у сменяющихся центров, какую иерархию выстраивает
+голосование и взаимны ли предпочтения. Запросов к моделям нет.
 
 Читает готовые прогоны из runs/results и незавершённые — из runs/state (те, где есть
 все раунды и все голоса). Каждая статистика считается против случайного уровня:
 закрепление ролей — перестановочный тест (те же наборы ролей, случайно розданные тем
-же исполнителям), линейность иерархии — сравнение с голосованием случайных voters.
-Отчёт собирается в Markdown: python run.py analyze [--save]. Числа идут без выводов:
-какую гипотезу они поддерживают, решает человек.
+же исполнителям), повтор состава — независимые выборы из эмпирических наборов
+условия, линейность иерархии — сравнение с голосованием случайных voters.
+Терминология — обзора «Социумы ИИ-агентов» (literature-review.up.railway.app):
+закрепление ролей — элемент уклада, повтор состава — конвенция, голосование —
+делегирование. Отчёт собирается в Markdown: python run.py analyze [--save].
+Числа идут без выводов: какую гипотезу они поддерживают, решает человек.
 """
 import itertools
 import math
@@ -63,7 +67,7 @@ def role_sets(rounds):
     return [frozenset(item["role"] for item in current["assignments"].values()) for current in rounds]
 
 
-# --- закрепление ------------------------------------------------------------
+# --- закрепление и конвенция ------------------------------------------------
 
 def repeat_count(rounds, shuffle=None):
     """Повторы роли: агент в следующий раз работает исполнителем и получает ту же роль.
@@ -103,6 +107,36 @@ def fixation(rounds):
             "expected": sum(null) / len(null),
             "low": null[math.floor(0.025 * SIMULATIONS)], "high": null[math.ceil(0.975 * SIMULATIONS) - 1],
             "p": (1 + sum(v >= observed for v in null)) / (SIMULATIONS + 1)}
+
+
+def set_repeats(rounds, pool=None, rng=None):
+    """Скольким сменам центра состав ролей повторил предыдущий.
+
+    При pool и rng наборы раундов заменяются независимыми выборами из pool —
+    так получается нулевой уровень конвенции: повторы, объясняющиеся общими
+    предпочтениями центров, а не передачей состава между ними.
+    """
+    sets = role_sets(rounds)
+    if rng is not None:
+        sets = [rng.choice(pool) for _ in sets]
+    return sum(1 for a, b in zip(sets, sets[1:]) if a == b)
+
+
+def convention(rounds, pool):
+    """Повтор состава ролей против независимого выбора из тех же предпочтений.
+
+    Двусторонний p — доля розыгрышей, отклоняющихся от среднего нуля не меньше
+    наблюдаемого: состав может повторяться и чаще, и реже случайного.
+    """
+    observed = set_repeats(rounds)
+    rng = random.Random(SEED)
+    null = sorted(set_repeats(rounds, pool, rng) for _ in range(SIMULATIONS))
+    mean = sum(null) / len(null)
+    distance = abs(observed - mean)
+    return {"observed": observed, "transitions": len(role_sets(rounds)) - 1,
+            "expected": mean,
+            "low": null[math.floor(0.025 * SIMULATIONS)], "high": null[math.ceil(0.975 * SIMULATIONS) - 1],
+            "p": (1 + sum(abs(v - mean) >= distance for v in null)) / (SIMULATIONS + 1)}
 
 
 # --- голосование ------------------------------------------------------------
@@ -202,6 +236,26 @@ def voter_ranking(vote):
     return run.ballot_ranking(vote) if isinstance(vote, list) else vote["ranking"]
 
 
+def reciprocity(votes):
+    """Взаимность делегирования: согласованность мест, которые агенты дают друг другу.
+
+    Для каждой пары агентов берётся точка (место j у i, место i у j); τ — конкордация
+    этих точек со связями: +1 — предпочтения возвращаются (высокое место взаимно),
+    −1 — односторонние, 0 — независимые.
+    """
+    rankings = {voter: voter_ranking(vote) for voter, vote in votes.items()}
+    points = [(rankings[x].index(y), rankings[y].index(x))
+              for x, y in itertools.combinations(rankings, 2)
+              if y in rankings[x] and x in rankings[y]]
+    if len(points) < 2:
+        return None
+    concordant = discordant = 0
+    for (a, b), (c, d) in itertools.combinations(points, 2):
+        concordant += int((a - c) * (b - d) > 0)
+        discordant += int((a - c) * (b - d) < 0)
+    return (concordant - discordant) / math.comb(len(points), 2)
+
+
 # --- согласие с точностью и судьёй -------------------------------------------
 
 def organizer_orders(data):
@@ -261,41 +315,55 @@ def condition_section(condition, subset):
         lines.append(f"| {data['spec']['id'][:8]} | {data['spec']['repeat']} | {status(data)} | {vote_kind(data)} |")
     lines.append("")
 
-    # Роли: что организаторы раздают
+    # Роли: что центры раздают; пространство выбора задано меню
     counts, catalog = {}, run.roles()
     for data in subset:
         for role, count in role_counts(data["rounds"]).items():
             counts[role] = counts.get(role, 0) + count
-    lines += ["### Роли", "", "| Роль | Назначений |", "|---|---|"]
+    lines += ["### Роли (пространство выбора задано меню)", "", "| Роль | Назначений |", "|---|---|"]
     for role in sorted(catalog, key=lambda r: (-counts.get(r, 0), r)):
         lines.append(f"| {role} | {counts.get(role, 0)} |")
     unused = [role for role in catalog if role not in counts]
     if unused:
         lines += ["", f"Не использована ни разу: {', '.join(unused)}."]
-    repeats = sum(1 for data in subset for index, current in enumerate(role_sets(data["rounds"]))
-                  if index and current == role_sets(data["rounds"])[index - 1])
-    changes = sum(max(0, len(data["rounds"]) - 1) for data in subset)
-    lines += ["", f"Набор ролей повторяет набор прошлого раунда в {repeats} сменах организатора из {changes}.", ""]
+    lines += [""]
+
+    # Конвенция: повторяется ли состав ролей у сменяющихся центров
+    pool = [item for data in subset for item in role_sets(data["rounds"])]
+    lines += ["### Конвенция состава ролей", "",
+              "Повтор — следующему центру достался тот же состав ролей, что предыдущему. Случайный уровень — "
+              f"составы прогона разыграны как независимые выборы из эмпирических составов условия ({SIMULATIONS} розыгрышей): "
+              "повторы, объясняющиеся общими предпочтениями, не считаются передачей состава.",
+              "", "| Прогон | Повторы | Случайно (95%) | p |", "|---|---|---|---|"]
+    for data in subset:
+        value = convention(data["rounds"], pool)
+        p_value = "<0.001" if value["p"] < 0.001 else f"{value['p']:.3f}"
+        lines.append(f"| {data['spec']['id'][:8]} | {value['observed']} из {value['transitions']} "
+                     f"| {value['expected']:.1f} ({value['low']}–{value['high']}) | {p_value} |")
+    lines += [""]
 
     # Закрепление: держатся ли роли за агентами
-    lines += ["### Закрепление ролей", "",
+    lines += ["### Закрепление ролей (уклад)", "",
               "Повтор — агент в следующий раз работает исполнителем и получает ту же роль, что в прошлый. "
               f"Случайный уровень — те же наборы ролей, случайно розданные тем же исполнителям ({SIMULATIONS} розыгрышей).",
-              "", "| Прогон | Повторы | Случайно (95%) | p |", "|---|---|---|---|"]
+              "", "| Прогон | Повторы | к случайному | Случайно (95%) | p |", "|---|---|---|---|---|"]
     for data in subset:
         value = fixation(data["rounds"])
         p_value = "<0.001" if value["p"] < 0.001 else f"{value['p']:.3f}"
-        lines.append(f"| {data['spec']['id'][:8]} | {value['observed']} из {value['pairs']} "
+        effect = f"×{value['observed'] / value['expected']:.1f}" if value["expected"] else "—"
+        lines.append(f"| {data['spec']['id'][:8]} | {value['observed']} из {value['pairs']} | {effect} "
                      f"| {value['expected']:.1f} ({value['low']}–{value['high']}) | {p_value} |")
     lines.append("")
 
     # Голосование: какая иерархия выстроилась
-    lines += ["### Голосование", "",
+    lines += ["### Голосование (делегирование)", "",
               "По каждой паре голосуют остальные трое; победитель — большинство. Линейность h — доля "
               "согласованных троек в итоговом порядке (1 — полный порядок без циклов). Случайный уровень — "
-              "те же голосующие со случайными порядками предпочтений.",
-              "", "| Прогон | Порядок по победам | h | Случайно (95%) | Единодушных пар | τ группы с точностью | τ группы с судьёй |",
-              "|---|---|---|---|---|---|---|"]
+              "те же голосующие со случайными порядками предпочтений. Взаимность τ — согласованность мест, "
+              "которые два агента дают друг другу в своих ранжированиях: +1 — предпочтения возвращаются, "
+              "−1 — односторонние.",
+              "", "| Прогон | Порядок по победам | h | Случайно (95%) | Единодушных пар | Взаимность τ | τ группы с точностью | τ группы с судьёй |",
+              "|---|---|---|---|---|---|---|---|"]
     chance = linearity_null(agents)
     for data in subset:
         wins, scores, undecided = majority(data["votes"], agents)
@@ -305,6 +373,7 @@ def condition_section(condition, subset):
         lines.append(f"| {data['spec']['id'][:8]} | {' > '.join(group)} | {linearity(wins):.2f} "
                      f"| {chance['mean']:.2f} ({chance['low']:.2f}–{chance['high']:.2f}) "
                      f"| {unanimous} из {len(scores)}{split} "
+                     f"| {fmt(reciprocity(data['votes']))} "
                      f"| {fmt(tau_group['accuracy'])} | {fmt(tau_group['judge'])} |")
     lines.append("")
     details = []
@@ -332,6 +401,13 @@ def report():
         return "Прогонов с полными раундами и голосами нет."
     lines = ["# Анализ прогонов", "",
              f"Прогонов: {len(data)}. Прочерк — значения нет: у судьи не хватает оценок или все они одинаковы.",
+             "",
+             "Термины — обзора «Социумы ИИ-агентов» (literature-review.up.railway.app): закрепление "
+             "ролей — элемент уклада, повтор состава ролей — конвенция, голосование — делегирование. "
+             "Задано средой: меню шести ролей, ротация центра латинским квадратом, условия видимости, "
+             "чередование порядка пар. Наблюдается: назначенные роли, прогнозы, голоса по логпробам — "
+             "события среды, а не самоотчёты. Интерпретация — за человеком: какие гипотезы числа "
+             "поддерживают и каким механизмом, решает он.",
              ""]
     for condition in run.CONDITIONS:
         subset = [d for d in data if d["spec"]["condition"] == condition]
