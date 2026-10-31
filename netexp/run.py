@@ -16,6 +16,12 @@
 от одного и того же состояния его памяти; ответы измеряются логпробами токенов
 «1» и «2» (llm.choice) и в историю не попадают. Затем судья (judge.py) оценивает
 распределение ролей и ответы; агентам его оценки не передаются.
+
+Условие solo — контроль лестницы сравнения из обзора (гл. 13.2): те же агенты,
+те же окна и та же ротация, но без общения. Фазы раунда сводятся к одной —
+solo (агент прогнозирует один, без ролей и исполнителей), итоги раунда видит
+только сам прогнозист, а голосование и судья не проводятся: делегировать
+и оценивать некого и нечего.
 """
 import json
 import random
@@ -23,7 +29,7 @@ import re
 
 from . import judge, llm, series, store
 
-CONDITIONS = ("open", "closed")
+CONDITIONS = ("open", "closed", "solo")
 TERMINAL = ("done", "failed")
 MAX_INVALID = 3
 EMPTY_RETRIES = 3
@@ -56,9 +62,14 @@ def spec(profile, condition, repeat=0):
     if condition not in CONDITIONS or type(repeat) is not int or repeat < 0:
         raise ValueError("Неизвестное условие или некорректный повтор")
     series.check()
-    value = {"version": 3, "protocol": store.protocol_digest(), "profile": store.profile(profile),
-             "vote": vote_profile(store.profile(profile)),
-             "judge": store.profile(store.config()["judge_profile"]), "condition": condition, "repeat": repeat}
+    value = {"version": 4, "protocol": store.protocol_digest(), "profile": store.profile(profile),
+             "condition": condition, "repeat": repeat}
+    if condition == "solo":
+        # Контроль без общения: голосовать и оценивать некого и нечего.
+        value["vote"], value["judge"] = None, None
+    else:
+        value["vote"] = vote_profile(store.profile(profile))
+        value["judge"] = store.profile(store.config()["judge_profile"])
     # Порядок ролей в меню свой у каждого прогона, чтобы первая в списке роль не получала преимущества.
     order = list(roles())
     random.Random(store.digest(value)).shuffle(order)
@@ -92,11 +103,11 @@ def save(state):
 def start(profile, condition, repeat=0):
     store.check_stop()
     run = spec(profile, condition, repeat)
-    if store.profile(store.config()["judge_profile"])["transport"] != "api":
+    if condition != "solo" and store.profile(store.config()["judge_profile"])["transport"] != "api":
         raise ValueError("Судья вызывается только через API")
     if not store.run_file("state", run["id"]).exists():
         agents = names()
-        save({"spec": run, "phase": "assign", "round": 0, "step": 0, "seq": 0, "invalid": 0,
+        save({"spec": run, "phase": "solo" if condition == "solo" else "assign", "round": 0, "step": 0, "seq": 0, "invalid": 0,
               "retry": None, "pending": None, "rounds": [], "debriefs": {}, "votes": {}, "judgments": [],
               "histories": {a: [] for a in agents}, "inbox": {a: [] for a in agents},
               "sessions": {a: None for a in agents}})
@@ -120,7 +131,7 @@ def workers(state):
 
 def current_agent(state):
     phase = state["phase"]
-    if phase in ("assign", "forecast"):
+    if phase in ("assign", "forecast", "solo"):
         return organizer(state, state["round"])
     if phase == "work":
         return workers(state)[state["step"]]
@@ -128,9 +139,11 @@ def current_agent(state):
     return names()[state["step"]]
 
 
-def system_prompt():
+def system_prompt(condition=None):
+    """Системный промпт: общее описание мира, у solo — без ролей и организатора."""
     agents = names()
-    return text("system").format(agents=len(agents), names=", ".join(agents))
+    name = "solo_system" if condition == "solo" else "system"
+    return text(name).format(agents=len(agents), names=", ".join(agents))
 
 
 def role_menu(order):
@@ -159,6 +172,8 @@ def step_message(state, agent):
     if phase == "debrief":
         return text("debrief")
     ctx, boss, team = round_context(state), organizer(state, state["round"]), workers(state)
+    if phase == "solo":
+        return text("solo").format(**ctx)
     if phase == "assign":
         example = ", ".join(f'"{a}": {{"role": "роль", "task": "задание"}}' for a in team)
         return text("assign").format(workers=", ".join(team), example=example, **ctx)
@@ -176,8 +191,10 @@ def step_message(state, agent):
 def make_pending(state):
     """Фиксирует запрос шага вместе с входящими итогами: повтор advance отправит тот же текст."""
     agent = current_agent(state)
-    intro = text("intro").format(name=agent, roles=role_menu(state["spec"]["role_order"]))
-    parts = [] if state["histories"][agent] else [intro]
+    parts = []
+    # В solo меню ролей не приходит: ролей нет и имена для задачи не нужны.
+    if not state["histories"][agent] and state["spec"]["condition"] != "solo":
+        parts.append(text("intro").format(name=agent, roles=role_menu(state["spec"]["role_order"])))
     parts += state["inbox"][agent] + [step_message(state, agent)]
     state["inbox"][agent] = []
     state["seq"] += 1
@@ -240,6 +257,15 @@ def check_assignments(value, team):
     return {a: {"role": value[a]["role"], "task": value[a]["task"].strip()} for a in team}
 
 
+def forecast_values(answer, horizon):
+    """Список forecast из ответа: ровно horizon чисел."""
+    forecast = parse_json(answer).get("forecast")
+    if not isinstance(forecast, list) or len(forecast) != horizon \
+            or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in forecast):
+        raise ValueError(f"нужен список forecast из {horizon} чисел")
+    return [float(x) for x in forecast]
+
+
 def apply(state, agent, answer):
     phase, horizon = state["phase"], store.config()["horizon"]
     if phase == "assign":
@@ -256,11 +282,11 @@ def apply(state, agent, answer):
         if state["step"] == len(workers(state)):
             state["phase"] = "forecast"
     elif phase == "forecast":
-        forecast = parse_json(answer).get("forecast")
-        if not isinstance(forecast, list) or len(forecast) != horizon \
-                or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in forecast):
-            raise ValueError(f"нужен список forecast из {horizon} чисел")
-        close_round(state, [float(x) for x in forecast])
+        close_round(state, forecast_values(answer, horizon))
+    elif phase == "solo":
+        state["rounds"].append({"organizer": agent, "origin": series.window(state["round"])[1],
+                                "assignments": {}, "answers": {}})
+        close_round(state, forecast_values(answer, horizon))
     elif phase == "debrief":
         if not answer:
             raise ValueError("пустой ответ")
@@ -271,26 +297,43 @@ def apply(state, agent, answer):
 
 
 def close_round(state, forecast):
-    """Оценивает прогноз и кладёт итоги раунда во входящие всех агентов по правилам условия."""
+    """Оценивает прогноз и кладёт итоги раунда по правилам условия."""
     values = series.load()
     begin, origin, end = series.window(state["round"])
     current = state["rounds"][state["round"]]
     current.update(forecast=forecast, actual=values[origin:end],
                    mase=series.mase(forecast, values[origin:end], values[begin:origin]))
     summary = store.read_json(store.ROOT / "prompts/summary.json")
-    lines = [summary["header"].format(round=state["round"] + 1, organizer=current["organizer"])]
+    solo = state["spec"]["condition"] == "solo"
+    header = summary["solo_header"] if solo else summary["header"]
+    lines = [header.format(round=state["round"] + 1, organizer=current["organizer"])]
     # Точность (MASE) агентам не показывается: она нужна только для анализа.
     for part in summary["conditions"][state["spec"]["condition"]]:
         if part == "assignments":
             lines.append(summary["assignments"].format(assignments=assignment_lines(current["assignments"])))
         else:
-            lines.append(summary["forecast"].format(forecast=series.table(forecast, origin)))
+            template = summary["solo_forecast"] if solo else summary["forecast"]
+            lines.append(template.format(forecast=series.table(forecast, origin)))
     lines.append(summary["actual"].format(actual=series.table(values[origin:end], origin)))
     current["summary"] = "\n".join(lines)
-    for agent in names():
-        state["inbox"][agent].append(current["summary"])
+    if solo:
+        # Свой раунд в solo — единственный: следующего сообщения, к которому итоги
+        # приклеились бы, не будет, поэтому они попадают прямо в историю прогнозиста.
+        # Остальные агенты ничего о раунде не узнают — они полностью независимы.
+        state["histories"][current["organizer"]] += [{"role": "user", "content": current["summary"]}]
+    else:
+        for agent in names():
+            state["inbox"][agent].append(current["summary"])
     state["round"] += 1
-    state["phase"], state["step"] = ("debrief" if state["round"] == len(names()) else "assign"), 0
+    finished = state["round"] == len(names())
+    if solo:
+        # Голосовать и оценивать в solo некого и нечего: прогон заканчивается прогнозами.
+        state["phase"] = "done" if finished else "solo"
+        if finished:
+            finish(state)
+    else:
+        state["phase"] = "debrief" if finished else "assign"
+    state["step"] = 0
 
 
 # --- голосование ------------------------------------------------------------
@@ -308,7 +351,7 @@ def collect_votes(state):
     но и перевес предпочтения. Кто из пары показан первым, чередуется по хешу,
     чтобы позиция «1» не получала постоянного преимущества.
     """
-    profile, system = state["spec"]["vote"], system_prompt()
+    profile, system = state["spec"]["vote"], system_prompt(state["spec"]["condition"])
     for agent in names():
         history = state["histories"][agent]
         state["votes"][agent] = []
@@ -391,7 +434,8 @@ def advance(ident):
         if profile["transport"] == "subagent":
             break
         pending = state["pending"]
-        messages = [{"role": "system", "content": system_prompt()}, *state["histories"][pending["agent"]],
+        messages = [{"role": "system", "content": system_prompt(state["spec"]["condition"])},
+                    *state["histories"][pending["agent"]],
                     {"role": "user", "content": pending["message"]}]
         # DeepSeek изредка отдаёт пустой ответ после рассуждения; такой ответ запрашивается заново,
         # и агент о нём не узнаёт. Три пустых подряд идут в accept как некорректный ответ.

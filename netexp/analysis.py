@@ -16,7 +16,7 @@ import itertools
 import math
 import random
 
-from . import run, store
+from . import run, series, store
 
 SIMULATIONS = 20000
 SEED = 20261101
@@ -25,7 +25,8 @@ SEED = 20261101
 # --- данные -----------------------------------------------------------------
 
 def runs():
-    """Прогоны с полными раундами и голосами: готовые результаты и незавершённые состояния."""
+    """Прогоны с полными раундами: готовые результаты, незавершённые состояния с голосами
+    и состояния контроля solo (голосов и судьи в solo нет — достаточно раундов)."""
     agents = store.config()["agents"]
     found = []
     for path in sorted((store.ROOT / "runs/results").glob("*.json")):
@@ -34,7 +35,8 @@ def runs():
         if store.run_file("results", path.stem).exists():
             continue
         state = store.read_json(path)
-        if len(state.get("rounds", [])) == agents and len(state.get("votes", {})) == agents:
+        if len(state.get("rounds", [])) == agents and (len(state.get("votes", {})) == agents
+                                                       or state["spec"]["condition"] == "solo"):
             found.append(state)
     return found
 
@@ -306,6 +308,99 @@ def tau_range(values):
     return "—" if not values else f"от {min(values):+.2f} до {max(values):+.2f}"
 
 
+# --- коллективный выигрыш ----------------------------------------------------
+
+def sign_test(wins, total):
+    """Двусторонний точный знаковый тест при p=0.5; нули и ничьи не считаются."""
+    if not total:
+        return None
+    tail = sum(math.comb(total, i) for i in range(min(wins, total - wins) + 1)) / 2 ** total
+    return min(1.0, 2 * tail)
+
+
+def ensemble_mase(data, condition, round_index):
+    """MASE медианного прогноза всех прогонов условия на окно раунда round_index.
+
+    Медиана — механическая агрегация без обсуждения: ступень «независимый ансамбль»
+    из лестницы сравнения обзора (гл. 13.2).
+    """
+    forecasts, actual = [], None
+    for d in data:
+        if d["spec"]["condition"] != condition or len(d["rounds"]) <= round_index:
+            continue
+        current = d["rounds"][round_index]
+        if current.get("forecast"):
+            forecasts.append(current["forecast"])
+        if actual is None and current.get("actual"):
+            actual = current["actual"]
+    if not forecasts or actual is None:
+        return None, 0
+    weeks = list(zip(*forecasts))
+    median = [sorted(week)[len(week) // 2] for week in weeks]
+    begin, origin, end = series.window(round_index)
+    return series.mase(median, actual, series.load()[begin:origin]), len(forecasts)
+
+
+def delta_q_section(data):
+    """Коллективный выигрыш: организованные условия против одиночек на парных окнах."""
+    solo = {d["spec"]["repeat"]: d for d in data if d["spec"]["condition"] == "solo"}
+    lines = ["## Коллективный выигрыш (ΔQ)", "",
+             "ΔQ = MASE одиночки − MASE группы на одном окне: положительное значение — организованная "
+             "группа ошибается меньше. Пары стыкуются повторами: в повторе k раунд r и в группе, и в solo "
+             "ведёт один и тот же агент на том же окне (латинский квадрат). Ресурсы при этом не равны: "
+             "группа тратит ещё и на общение, поэтому рядом идёт ступень «независимый ансамбль» — медиана "
+             "прогнозов одиночек на окне против медианы групповых.", ""]
+    pairs = []
+    for condition in ("open", "closed"):
+        for d in data:
+            if d["spec"]["condition"] != condition or d["spec"]["repeat"] not in solo:
+                continue
+            for group_round, solo_round in zip(d["rounds"], solo[d["spec"]["repeat"]]["rounds"]):
+                if group_round.get("mase") is None or solo_round.get("mase") is None:
+                    continue
+                pairs.append((condition, d["spec"]["repeat"], group_round["organizer"],
+                              group_round["mase"], solo_round["mase"]))
+    if not pairs:
+        return lines + [f"solo-прогонов с полными раундами: {len(solo)}; пар с групповыми условиями нет — "
+                        "запустите те же повторы командой `python run.py plan --profile deepseek "
+                        "--conditions solo --repeats 5`.", ""]
+    lines += ["| Условие | Повтор | Раунд ведёт | MASE группа | MASE одиночка | ΔQ |", "|---|---|---|---|---|---|"]
+    for condition, repeat, agent, group_mase, solo_mase in pairs:
+        lines.append(f"| `{condition}` | {repeat} | {agent} | {group_mase:.2f} | {solo_mase:.2f} "
+                     f"| {solo_mase - group_mase:+.2f} |")
+    deltas = [solo_mase - group_mase for _, _, _, group_mase, solo_mase in pairs]
+    wins = sum(1 for v in deltas if v > 0)
+    losses = sum(1 for v in deltas if v < 0)
+    p_value = sign_test(wins, wins + losses)
+    p_text = "—" if p_value is None else ("<0.001" if p_value < 0.001 else f"{p_value:.3f}")
+    lines += ["", f"Медианный ΔQ {sorted(deltas)[len(deltas) // 2]:+.2f}; группа лучше в {wins} из "
+             f"{len(deltas)} пар ({losses} хуже, {len(deltas) - wins - losses} равных); знаковый тест p = {p_text}.",
+             ""]
+    lines += ["### Независимый ансамбль (медиана прогнозов на окне)", "",
+              "| Окно | `open` | `closed` | `solo` |", "|---|---|---|---|"]
+    for index in range(store.config()["agents"]):
+        cells = []
+        for condition in ("open", "closed", "solo"):
+            mase, count = ensemble_mase(data, condition, index)
+            cells.append("—" if mase is None else f"{count}, {mase:.2f}")
+        lines.append(f"| {index + 1} | " + " | ".join(cells) + " |")
+    return lines + [""]
+
+
+def solo_section(subset):
+    """Секция контроля solo: одиночные прогнозы без общения."""
+    lines = ["## Контроль `solo`", "",
+             "Те же агенты, те же окна и та же ротация, что в групповых условиях, но без ролей, "
+             "исполнителей и сообщений: каждый агент делает свой прогноз один и видит только свои итоги. "
+             "MASE — ошибка относительно наивного «как на прошлой неделе»; меньше 1 — лучше наивного.",
+             "", "| Прогон | Повтор | Статус | MASE по раундам |", "|---|---|---|---|"]
+    for data in subset:
+        rounds = "; ".join(f"{r['organizer']} {r['mase']:.2f}" if r.get("mase") is not None
+                          else f"{r['organizer']} —" for r in data["rounds"])
+        lines.append(f"| {data['spec']['id'][:8]} | {data['spec']['repeat']} | {status(data)} | {rounds} |")
+    return lines + [""]
+
+
 # --- отчёт -------------------------------------------------------------------
 
 def condition_section(condition, subset):
@@ -410,9 +505,15 @@ def report():
              "поддерживают и каким механизмом, решает он.",
              ""]
     for condition in run.CONDITIONS:
+        if condition == "solo":
+            continue  # у контроля solo своя секция
         subset = [d for d in data if d["spec"]["condition"] == condition]
         if subset:
             lines += condition_section(condition, subset)
-    lines.append(f"p — перестановочный тест, {SIMULATIONS} розыгрышей, зерно фиксировано: "
-                 "повторный запуск даёт тот же отчёт.")
+    solo = [d for d in data if d["spec"]["condition"] == "solo"]
+    if solo:
+        lines += solo_section(solo)
+    lines += delta_q_section(data)
+    lines.append(f"p — перестановочный тест (закрепление, состав, линейность) или точный знаковый тест "
+                 f"(ΔQ); {SIMULATIONS} розыгрышей, зерно фиксировано: повторный запуск даёт тот же отчёт.")
     return "\n".join(lines)

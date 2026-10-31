@@ -202,6 +202,47 @@ class RunTests(unittest.TestCase):
         self.assertEqual(data["vote_rankings"]["A5"], ["A1", "A2", "A3", "A4"])
         self.assertEqual(data["vote_rankings"]["A1"], ["A2", "A3", "A4", "A5"])
 
+    def test_solo_control_run(self):
+        """Контроль solo: та же ротация и окна, но без ролей, общения, голосования и судьи."""
+        with patch.object(llm, "call", self.fake_call), patch.object(llm, "choice", self.fake_choice):
+            ident = run.start("deepseek", "solo", 1)["id"]
+            result = run.advance(ident)
+        self.assertTrue(result["done"])
+        data = store.read_json(self.root / result["result_file"])
+        self.assertEqual(data["status"], "done")
+        # Та же ротация, что и в групповом прогоне: повтор 1 начинает A2.
+        self.assertEqual([r["organizer"] for r in data["rounds"]], ["A2", "A3", "A4", "A5", "A1"])
+        self.assertTrue(all(r["assignments"] == {} and r["mase"] is not None for r in data["rounds"]))
+        self.assertEqual((data["votes"], data["judgments"], data["debriefs"]), ({}, [], {}))
+        agents = [c for c in self.calls if c[0] == "deepseek"]
+        self.assertEqual(len(agents), 5)                    # по одному прогнозу на раунд
+        self.assertEqual([c for c in self.calls if c[0] == "deepseek_pro"], [])
+        self.assertEqual(self.choices, [])                  # голосования нет
+        for profile, messages in agents:
+            self.assertIn("самостоятельно", messages[0]["content"])   # системный промпт solo
+            self.assertNotIn("Список ролей", json.dumps(messages, ensure_ascii=False))
+
+    def test_solo_summary_stays_with_forecaster(self):
+        """Итоги раунда в solo видит только прогнозист; у каждого — одно задание и одни итоги."""
+        with patch.object(llm, "call", self.fake_call), patch.object(llm, "choice", self.fake_choice):
+            ident = run.start("deepseek", "solo")["id"]
+            run.advance(ident)
+        state = store.read_json(store.run_file("state", ident))
+        for item in state["rounds"]:
+            readers = {a for a, h in state["histories"].items()
+                       if any(m["content"] == item["summary"] for m in h if m["role"] == "user")}
+            self.assertEqual(readers, {item["organizer"]})
+        # задание, прогноз, итоги — и ничего больше; меню ролей не приходит
+        self.assertTrue(all(len(h) == 3 for h in state["histories"].values()))
+        self.assertTrue(all("Список ролей" not in m["content"] for h in state["histories"].values()
+                            for m in h))
+
+    def test_solo_spec_has_no_vote_and_judge(self):
+        """В solo логпробы и судья не нужны: подходит любой эндпоинт, включая субагентов."""
+        self.assertIsNone(run.spec("deepseek", "solo")["vote"])
+        self.assertIsNone(run.spec("deepseek", "solo")["judge"])
+        run.start("sonnet_sub", "solo")  # не должно падать без vote_profile
+
     def test_sandbox_round_trip(self):
         home = self.root / "home"
         (home / ".claude/skills/x").mkdir(parents=True)
@@ -326,8 +367,16 @@ def synthetic_rounds(fixed):
             {a: values[(i + index + 1) % len(values)] for i, a in enumerate(workers)}
         rounds.append({"organizer": organizer, "origin": 0,
                        "assignments": {a: {"role": r, "task": ""} for a, r in assignment.items()},
-                       "answers": {}, "mase": 0.5, "forecast": [], "actual": []})
+                       "answers": {}, "mase": 0.5, "forecast": [21, 22, 23, 24],
+                       "actual": [20, 22, 24, 26]})
     return rounds
+
+
+def synthetic_solo_rounds(mase):
+    """Раунды контроля solo: та же ротация, без ролей, заданная ошибка."""
+    return [{"organizer": f"A{index + 1}", "origin": 0, "assignments": {}, "answers": {},
+             "mase": mase, "forecast": [22, 23, 24, 25], "actual": [20, 22, 24, 26]}
+            for index in range(5)]
 
 
 def rounds_with_sets(sets):
@@ -374,9 +423,10 @@ class AnalysisTests(unittest.TestCase):
         context.start()
         self.addCleanup(context.stop)
 
-    def write_run(self, ident, condition, votes, fixed=True, status="done", judgments=()):
-        data = {"spec": {"id": ident, "condition": condition, "repeat": 0}, "status": status,
-                "rounds": synthetic_rounds(fixed), "votes": votes, "judgments": list(judgments)}
+    def write_run(self, ident, condition, votes, fixed=True, status="done", judgments=(), rounds=None, repeat=0):
+        data = {"spec": {"id": ident, "condition": condition, "repeat": repeat}, "status": status,
+                "rounds": rounds if rounds is not None else synthetic_rounds(fixed),
+                "votes": votes, "judgments": list(judgments)}
         store.write_json(store.run_file("results", ident), data)
         return data
 
@@ -463,6 +513,22 @@ class AnalysisTests(unittest.TestCase):
         self.assertNotIn("None", markdown)
         # Отчёт воспроизводим: фиксированное зерно
         self.assertEqual(analysis.report(), markdown)
+
+    def test_delta_q_against_solo(self):
+        """ΔQ: пары группы и одиночки на общих окнах, медианный ансамбль, знаковый тест."""
+        votes = {v: linear_ballots([a for a in run.names() if a != v]) for v in run.names()}
+        self.write_run("d" * 24, "open", votes)                     # MASE 0.5 во всех раундах
+        self.write_run("e" * 24, "solo", {}, rounds=synthetic_solo_rounds(0.8))
+        self.write_run("f" * 24, "solo", {}, rounds=synthetic_solo_rounds(0.8), repeat=1)
+        markdown = analysis.report()
+        self.assertIn("## Контроль `solo`", markdown)
+        self.assertIn("Коллективный выигрыш", markdown)
+        self.assertIn("+0.30", markdown)          # ΔQ = 0.8 − 0.5 в каждой паре
+        self.assertIn("группа лучше в 5 из 5 пар", markdown)
+        self.assertIn("p = 0.062", markdown)      # двусторонний точный знаковый тест: 2 × 2⁻⁵
+        self.assertIn("Независимый ансамбль", markdown)
+        self.assertIn("2, ", markdown)           # ансамбль одиночек из двух прогонов
+        self.assertNotIn("None", markdown)
 
 
 if __name__ == "__main__":
