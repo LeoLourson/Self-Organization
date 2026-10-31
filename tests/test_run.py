@@ -175,7 +175,7 @@ class RunTests(unittest.TestCase):
         self.assertEqual(data["sessions"], {a: f"sub-{a}" for a in run.names()})
 
     def test_results_include_observables(self):
-        with patch.object(llm, "call", self.fake_call):
+        with patch.object(llm, "call", self.fake_call), patch.object(llm, "choice", self.fake_choice):
             ident = run.start("deepseek", "open")["id"]
             run.advance(ident)
         observed = store.read_json(store.run_file("results", ident))["observables"]
