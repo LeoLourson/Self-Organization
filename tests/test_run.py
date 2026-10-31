@@ -80,7 +80,7 @@ class RunTests(unittest.TestCase):
         self.assertEqual([r["organizer"] for r in data["rounds"]], ["A2", "A3", "A4", "A5", "A1"])
         self.assertEqual(len(data["votes"]), 5)
         agents = [c for c in self.calls if c[0] == "deepseek"]
-        judges = [c for c in self.calls if c[0] == "deepseek_pro"]
+        judges = [c for c in self.calls if c[0] == store.config()["judge_profile"]]
         self.assertEqual(len(agents), 5 * 6 + 5)   # раунды и итоги, без голосования
         self.assertEqual(len(judges), 5 * 5)
         self.assertEqual(len(self.choices), 5 * 6)  # попарные вопросы
@@ -98,7 +98,7 @@ class RunTests(unittest.TestCase):
             run.advance(ident)
         data = store.read_json(store.run_file("results", ident))
         for profile, messages in self.calls:
-            if profile == "deepseek_pro":
+            if profile == store.config()["judge_profile"]:
                 self.assertNotIn("Реальные значения", messages[-1]["content"])
                 self.assertNotIn("Организатор:", messages[-1]["content"])
         seen = json.dumps(data["histories"], ensure_ascii=False)
@@ -120,6 +120,14 @@ class RunTests(unittest.TestCase):
         orders = {tuple(run.spec("deepseek", "open", k)["role_order"]) for k in range(5)}
         self.assertGreater(len(orders), 1)
         self.assertEqual(run.spec("deepseek", "open", 0), run.spec("deepseek", "open", 0))
+
+    def test_missing_closing_brace_repaired(self):
+        """Потерянная скобка в конце ответа дописывается; ошибка внутри JSON по-прежнему отказ."""
+        text = '{"assignments": {"A2": {"role": "историк", "task": "описать волны"}}'
+        self.assertEqual(run.parse_json(text),
+                         {"assignments": {"A2": {"role": "историк", "task": "описать волны"}}})
+        with self.assertRaises(ValueError):
+            run.parse_json('{"assignments": {"A2" {"role": "историк"}}')
 
     def test_role_outside_menu_rejected(self):
         bad = json.dumps({"assignments": {a: {"role": "эконометрист", "task": "x"}
@@ -213,7 +221,7 @@ class RunTests(unittest.TestCase):
         self.assertEqual(sum(sum(row.values()) for row in observed["links"].values()), 20)
 
     def test_local_profile_and_logprobs(self):
-        profile = store.profile("local_6b")
+        profile = store.profile("local_yandex")
         self.assertEqual(profile["engine"], "local")
         base_url, api_key = llm.endpoint(store.config()["engines"]["local"])
         self.assertTrue(base_url.startswith("http://localhost"))
@@ -271,7 +279,7 @@ class RunTests(unittest.TestCase):
         self.assertEqual((data["votes"], data["judgments"], data["debriefs"]), ({}, [], {}))
         agents = [c for c in self.calls if c[0] == "deepseek"]
         self.assertEqual(len(agents), 5)                    # по одному прогнозу на раунд
-        self.assertEqual([c for c in self.calls if c[0] == "deepseek_pro"], [])
+        self.assertEqual([c for c in self.calls if c[0] == store.config()["judge_profile"]], [])
         self.assertEqual(self.choices, [])                  # голосования нет
         for profile, messages in agents:
             self.assertIn("самостоятельно", messages[0]["content"])   # системный промпт solo
@@ -384,12 +392,24 @@ class LlmChoiceTests(unittest.TestCase):
         self.assertAlmostEqual(values["1"], -0.2 + math.log(1 + math.exp(-2.8)))  # logsumexp(-0.2, -3.0)
         self.assertEqual(values["2"], -1.7)
         kwargs = LlmChoiceTests.FakeOpenAI.calls[0]
-        self.assertEqual(kwargs["max_tokens"], 1)
+        self.assertEqual(kwargs["max_tokens"], 2)
         self.assertTrue(kwargs["logprobs"])
         self.assertEqual(kwargs["top_logprobs"], 20)
         # Тот же запрос не ходит в сеть дважды
         llm.choice(self.profile, "s1", self.messages, ("1", "2"))
         self.assertEqual(len(LlmChoiceTests.FakeOpenAI.calls), 1)
+
+    def test_leading_space_token_skipped(self):
+        """Шаблон YandexGPT начинает ответ отдельным пробелом: цифра приходит вторым токеном."""
+        space = SimpleNamespace(token=" ", logprob=0.0,
+                                top_logprobs=[SimpleNamespace(token=" ", logprob=0.0)])
+        digit = SimpleNamespace(token="1", logprob=-0.2,
+                                top_logprobs=[SimpleNamespace(token="1", logprob=-0.2),
+                                              SimpleNamespace(token="2", logprob=-1.7)])
+        LlmChoiceTests.FakeOpenAI.responses = [SimpleNamespace(
+            choices=[SimpleNamespace(logprobs=SimpleNamespace(content=[space, digit]))], usage=None)]
+        values = llm.choice(self.profile, "s0", self.messages, ("1", "2"))
+        self.assertEqual(values, {"1": -0.2, "2": -1.7})
 
     def test_candidate_outside_top_is_none(self):
         top = [("1", -0.1), ("да", -5.0)]

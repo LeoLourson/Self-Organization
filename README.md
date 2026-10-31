@@ -181,24 +181,24 @@ python run.py analyze --save       # отчёт в reports/analysis-<дата>.m
 в `solo` могут пройти полностью.
 
 Профиль `qwen_local` в [config.json](config.json) показывает подключение
-локального сервера, `local_6b` — полностью локальный прогон на модели 6B
-(инструкция — [Запуск_6B.md](Запуск_6B.md)):
+локального сервера, `local_yandex` — полностью локальный прогон на YandexGPT
+5 Lite 8B (инструкция — [Запуск_6B.md](Запуск_6B.md)):
 
 ```powershell
 ollama serve
-ollama pull qwen2.5:1.5b
-$env:LOCAL_API_KEY = "x"
-python run.py check-vote --profile qwen_local
-python run.py start --profile qwen_local --condition open --repeat 0
+ollama pull hf.co/yandex/YandexGPT-5-Lite-8B-instruct-GGUF:Q4_K_M
+ollama create yandex-gpt-5-lite-8b -f Modelfile   # шаблон диалога из Запуск_6B.md
+python run.py check-vote --profile local_yandex
+python run.py start --profile local_yandex --condition open --repeat 0
 ```
 
-Проверено на Qwen3-0.6B (OpenAI-совместимый сервер над transformers, CPU):
-`check-vote` возвращает логпробы обоих вариантов, голосование из одного токена
-работает. На маленьких моделях ломается не голосование, а раздача ролей:
-Qwen2.5-0.5B и Qwen3-0.6B не выдают корректный JSON с именами ролей из списка,
-и прогон падает в фазе `assign` после трёх повторов. Какой размер достаточно
-устойчив для полного прогона, не проверено; ориентируйтесь на умение модели
-собирать вложенный JSON по примеру из задания.
+На YandexGPT 5 Lite 8B (Ollama, процессор) полный групповой прогон проходит:
+`check-vote` возвращает логпробы обоих вариантов, раздача ролей и прогноз
+собираются в JSON. У модели нет роли system (правила идут первой репликой
+пользователя), ответ начинается пробельным токеном (голос читается по второму
+токену), а в конце JSON иногда теряется закрывающая скобка (дописывается при
+разборе). Судья в этом профиле — та же локальная модель, поэтому его оценки
+ниже облачных.
 
 ## Словарь
 

@@ -343,19 +343,22 @@ def ensemble_mase(data, condition, round_index):
 
 def delta_q_section(data):
     """Коллективный выигрыш: организованные условия против одиночек на парных окнах."""
-    solo = {d["spec"]["repeat"]: d for d in data if d["spec"]["condition"] == "solo"}
+    # Пара «группа — одиночка» допустима только внутри одной модели: иначе ΔQ сравнивает разные модели.
+    solo = {((d["spec"].get("profile") or {}).get("model"), d["spec"]["repeat"]): d
+            for d in data if d["spec"]["condition"] == "solo"}
     lines = ["## Коллективный выигрыш (ΔQ)", "",
              "ΔQ = MASE одиночки − MASE группы на одном окне: положительное значение — организованная "
-             "группа ошибается меньше. Пары стыкуются повторами: в повторе k раунд r и в группе, и в solo "
-             "ведёт один и тот же агент на том же окне (латинский квадрат). Ресурсы при этом не равны: "
-             "группа тратит ещё и на общение, поэтому рядом идёт ступень «независимый ансамбль» — медиана "
-             "прогнозов одиночек на окне против медианы групповых.", ""]
+             "группа ошибается меньше. Пары стыкуются повторами и моделью: в повторе k раунд r и в группе, "
+             "и в solo ведёт один и тот же агент на том же окне (латинский квадрат). Ресурсы при этом не "
+             "равны: группа тратит ещё и на общение, поэтому рядом идёт ступень «независимый ансамбль» — "
+             "медиана прогнозов одиночек на окне против медианы групповых.", ""]
     pairs = []
     for condition in ("open", "closed"):
         for d in data:
-            if d["spec"]["condition"] != condition or d["spec"]["repeat"] not in solo:
+            key = ((d["spec"].get("profile") or {}).get("model"), d["spec"]["repeat"])
+            if d["spec"]["condition"] != condition or key not in solo:
                 continue
-            for group_round, solo_round in zip(d["rounds"], solo[d["spec"]["repeat"]]["rounds"]):
+            for group_round, solo_round in zip(d["rounds"], solo[key]["rounds"]):
                 if group_round.get("mase") is None or solo_round.get("mase") is None:
                     continue
                 pairs.append((condition, d["spec"]["repeat"], group_round["organizer"],

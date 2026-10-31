@@ -8,7 +8,7 @@
   "data": "data/series.csv",
   "subagent_type": "net-agent",
   "vote_profile": "sonnet_api",
-  "judge_profile": "deepseek_pro",
+  "judge_profile": "local_yandex",
   "api": {
     "max_tokens": 16000,
     "max_requests": 5000
@@ -60,10 +60,10 @@
       "model": "qwen2.5:1.5b",
       "settings": {}
     },
-    "local_6b": {
+    "local_yandex": {
       "transport": "api",
       "engine": "local",
-      "model": "yandex/YandexGPT5-Lite-6B",
+      "model": "yandex-gpt-5-lite-8b",
       "settings": {"temperature": 0.5, "max_tokens": 2000, "logprobs": true, "top_logprobs": 5}
     }
   },

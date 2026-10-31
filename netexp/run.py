@@ -218,10 +218,19 @@ def parse_json(answer):
     match = re.search(r"\{.*\}", answer, re.S)
     if not match:
         raise ValueError("нет JSON-объекта")
+    text = match.group(0)
     try:
-        value = json.loads(match.group(0))
+        value = json.loads(text)
     except json.JSONDecodeError as error:
-        raise ValueError(f"некорректный JSON ({error.msg})") from None
+        # Локальные модели иногда теряют closing braces в конце ответа: содержимое однозначно,
+        # и дописать недостающие скобки дешевле, чем ещё раз просить тот же ответ.
+        missing = text.count("{") - text.count("}")
+        try:
+            value = json.loads(text + "}" * missing) if missing > 0 else None
+        except json.JSONDecodeError:
+            value = None
+        if value is None:
+            raise ValueError(f"некорректный JSON ({error.msg})") from None
     if not isinstance(value, dict):
         raise ValueError("нужен JSON-объект")
     return value
@@ -462,7 +471,7 @@ def advance(ident):
         accept(state, answer)
         if was_forecast and state["retry"] is None:
             # Уверенность организатора в числах прогноза: логиты появляются, только если
-            # сервер их отдаёт (профиль local_6b), иначе поле просто не возникает.
+            # сервер их отдаёт (профиль local_yandex), иначе поле просто не возникает.
             summary = llm.cached_logprobs(scope)
             if summary:
                 state["rounds"][round_index]["forecast_confidence"] = summary

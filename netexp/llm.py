@@ -125,7 +125,10 @@ def first_token_logprobs(response, candidates):
     content = getattr(logprobs, "content", None) if logprobs else None
     if not content:
         raise ValueError("Эндпоинт не вернул логпробы; он должен поддерживать logprobs и top_logprobs")
-    entry = content[0]
+    # Шаблон YandexGPT после [SEP] первым токеном выдаёт пробел: ответ начинается со второго токена.
+    entry = next((item for item in content if (item.token or "").strip()), None)
+    if entry is None:
+        raise ValueError("Ответ состоит из одних пробельных токенов: цифры выбрать не из чего")
     tokens = [(item.token, float(item.logprob)) for item in (entry.top_logprobs or [])]
     if all(token != entry.token for token, _ in tokens):
         tokens.append((entry.token, float(entry.logprob)))
@@ -137,11 +140,12 @@ def first_token_logprobs(response, candidates):
 
 
 def choice(profile, scope, messages, candidates):
-    """Логпробы кандидатов в первом токене ответа; ответ запрашивается одним токеном.
+    """Логпробы кандидатов в первом содержательном токене ответа.
 
     Для вопросов с ответом в одно слово это измерение без сэмплирования: логпробы
-    не зависят от температуры и дают не только выбор, но и перевес. Как и call,
-    повтор берётся из кэша.
+    не зависят от температуры и дают не только выбор, но и перевес. Запрашивается
+    два токена: у шаблона YandexGPT ответ начинается с отдельного пробела, и цифра
+    приходит вторым токеном. Как и call, повтор берётся из кэша.
     """
     store.check_stop()
     engine = store.config()["engines"][profile["engine"]]
@@ -155,7 +159,7 @@ def choice(profile, scope, messages, candidates):
                     if k not in ("max_tokens", "logprobs", "top_logprobs")}
         with OpenAI(api_key=api_key, base_url=base_url, timeout=180, max_retries=0) as client:
             response = client.chat.completions.create(model=profile["model"], messages=messages,
-                                                      max_tokens=1, logprobs=True, top_logprobs=20,
+                                                      max_tokens=2, logprobs=True, top_logprobs=20,
                                                       **settings)
         return json.dumps(first_token_logprobs(response, candidates)), \
             response.usage.model_dump() if response.usage else {}, None
