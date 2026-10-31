@@ -11,9 +11,11 @@
 (организатор даёт прогноз). После прогноза итоги раунда по правилам условия
 кладутся во входящие всех агентов и приклеиваются к следующему сообщению каждому.
 После последнего раунда каждый агент получает итоги вместе с просьбой подвести
-итог для себя (debrief), и только следующим сообщением — вопрос о голосе (vote):
-так голос не идёт сразу за итогами последнего раунда. Затем судья (judge.py)
-оценивает распределение ролей и ответы; агентам его оценки не передаются.
+итог для себя (debrief). Затем голосование (vote): каждый агент отвечает на
+попарные вопросы об остальных — по одному короткому вопросу на пару, заданные
+от одного и того же состояния его памяти; ответы измеряются логпробами токенов
+«1» и «2» (llm.choice) и в историю не попадают. Затем судья (judge.py) оценивает
+распределение ролей и ответы; агентам его оценки не передаются.
 """
 import json
 import random
@@ -25,6 +27,7 @@ CONDITIONS = ("open", "closed")
 TERMINAL = ("done", "failed")
 MAX_INVALID = 3
 EMPTY_RETRIES = 3
+VOTE_ATTEMPTS = 3
 
 
 # --- описание прогона ------------------------------------------------------
@@ -37,12 +40,24 @@ def roles():
     return store.read_json(store.ROOT / "prompts/roles.json")
 
 
+def vote_profile(profile):
+    """Профиль, которым измеряются попарные голоса: у субагентов логпробов нет, нужен API-профиль."""
+    if profile["transport"] == "api":
+        return profile
+    name = store.config().get("vote_profile")
+    value = store.profile(name) if name else None
+    if not value or value["transport"] != "api":
+        raise ValueError("Для прогонов на субагентах укажите API-профиль vote_profile в config.json")
+    return value
+
+
 def spec(profile, condition, repeat=0):
     """Полное описание прогона. ID — хеш описания, поэтому повторный start возвращает тот же прогон."""
     if condition not in CONDITIONS or type(repeat) is not int or repeat < 0:
         raise ValueError("Неизвестное условие или некорректный повтор")
     series.check()
-    value = {"version": 2, "protocol": store.protocol_digest(), "profile": store.profile(profile),
+    value = {"version": 3, "protocol": store.protocol_digest(), "profile": store.profile(profile),
+             "vote": vote_profile(store.profile(profile)),
              "judge": store.profile(store.config()["judge_profile"]), "condition": condition, "repeat": repeat}
     # Порядок ролей в меню свой у каждого прогона, чтобы первая в списке роль не получала преимущества.
     order = list(roles())
@@ -109,6 +124,7 @@ def current_agent(state):
         return organizer(state, state["round"])
     if phase == "work":
         return workers(state)[state["step"]]
+    # debrief: агенты по порядку; голосование и судья не ходят по сообщениям
     return names()[state["step"]]
 
 
@@ -142,9 +158,6 @@ def step_message(state, agent):
     phase, cfg = state["phase"], store.config()
     if phase == "debrief":
         return text("debrief")
-    if phase == "vote":
-        others = [a for a in names() if a != agent]
-        return text("vote").format(others=", ".join(others), count=len(others))
     ctx, boss, team = round_context(state), organizer(state, state["round"]), workers(state)
     if phase == "assign":
         example = ", ".join(f'"{a}": {{"role": "роль", "task": "задание"}}' for a in team)
@@ -255,16 +268,6 @@ def apply(state, agent, answer):
         state["step"] += 1
         if state["step"] == len(names()):
             state["phase"], state["step"] = "vote", 0
-    elif phase == "vote":
-        vote = parse_json(answer)
-        others = [a for a in names() if a != agent]
-        if not isinstance(vote.get("ranking"), list) or sorted(map(str, vote["ranking"])) != others \
-                or not isinstance(vote.get("reason"), str):
-            raise ValueError(f"ranking должен содержать ровно {', '.join(others)}, reason — строку")
-        state["votes"][agent] = {"ranking": vote["ranking"], "reason": vote["reason"]}
-        state["step"] += 1
-        if state["step"] == len(names()):
-            state["phase"] = "judge"
 
 
 def close_round(state, forecast):
@@ -290,17 +293,93 @@ def close_round(state, forecast):
     state["phase"], state["step"] = ("debrief" if state["round"] == len(names()) else "assign"), 0
 
 
+# --- голосование ------------------------------------------------------------
+
+def pairs(agents):
+    return [(agents[i], agents[j]) for i in range(len(agents)) for j in range(i + 1, len(agents))]
+
+
+def collect_votes(state):
+    """Попарные голоса: по одному короткому вопросу на каждую пару остальных.
+
+    Вопросы не попадают в историю агента и задаются от одного и того же состояния
+    его памяти после подведения итогов, поэтому ответ на один вопрос не влияет на
+    остальные. Регистрируются логпробы обоих вариантов ответа — не только выбор,
+    но и перевес предпочтения. Кто из пары показан первым, чередуется по хешу,
+    чтобы позиция «1» не получала постоянного преимущества.
+    """
+    profile, system = state["spec"]["vote"], system_prompt()
+    for agent in names():
+        history = state["histories"][agent]
+        state["votes"][agent] = []
+        for x, y in pairs([a for a in names() if a != agent]):
+            one, two = (y, x) if int(store.digest([state["spec"]["id"], agent, x, y]), 16) % 2 else (x, y)
+            question = text("pair").format(first=one, second=two)
+            messages = [{"role": "system", "content": system}, *history,
+                        {"role": "user", "content": question}]
+            values = {"1": None, "2": None}
+            for attempt in range(VOTE_ATTEMPTS):
+                scope = store.digest([state["spec"]["id"], "vote", agent, x, y, attempt])
+                values = llm.choice(profile, scope, messages, ("1", "2"))
+                if values["1"] is not None and values["2"] is not None:
+                    break
+            if values["1"] is None or values["2"] is None:
+                raise RuntimeError(f"{agent}: нет логпроба одного из вариантов в паре {one}–{two}; "
+                                   f"проверьте эндпоинт командой check-vote")
+            state["votes"][agent].append({"pair": [x, y], "one": one,
+                                          "logprob": {one: values["1"], two: values["2"]}})
+        save(state)
+
+
+def ballot_score(ballots):
+    """Суммарный перевес агента над остальными по логпробам парных сравнений."""
+    score = {agent: 0.0 for ballot in ballots for agent in ballot["pair"]}
+    for ballot in ballots:
+        x, y = ballot["pair"]
+        lp = ballot["logprob"]
+        score[x] += lp[x] - lp[y]
+        score[y] += lp[y] - lp[x]
+    return score
+
+
+def ballot_ranking(ballots):
+    """Порядок остальных по сумме перевесов; при равенстве — по имени."""
+    score = ballot_score(ballots)
+    return sorted(score, key=lambda a: (-score[a], a))
+
+
+def check_vote(profile_name):
+    """Один пробный попарный вопрос к API: проверяет, что эндпоинт отдаёт логпробы, до платного прогона."""
+    profile = store.profile(profile_name)
+    if profile["transport"] != "api":
+        raise ValueError("Проверка нужна для API-профиля: у субагентов логпробов нет")
+    agents = names()
+    messages = [{"role": "system", "content": system_prompt()},
+                {"role": "user", "content": text("pair").format(first=agents[0], second=agents[1])}]
+    scope = store.digest(["check-vote", profile["engine"], profile["model"]])
+    values = llm.choice(profile, scope, messages, ("1", "2"))
+    if values["1"] is None or values["2"] is None:
+        raise ValueError("Один из вариантов не попал в топ-20 логпробов; попробуйте другую модель")
+    return {"profile": profile_name, "model": profile["model"], "logprob": values,
+            "margin": values["1"] - values["2"]}
+
+
 # --- исполнение ------------------------------------------------------------
 
 def advance(ident):
     """Исполняет API-шаги до конца прогона; при субагентах останавливается на запросе оркестратору.
 
-    Судья всегда вызывается через API, в том числе в прогоне на субагентах.
+    Голосование и судья всегда идут через API, в том числе в прогоне на субагентах.
     """
     state = load_state(ident)
     profile = state["spec"]["profile"]
     while state["phase"] not in TERMINAL:
         store.check_stop()
+        if state["phase"] == "vote":
+            collect_votes(state)
+            state["phase"] = "judge"
+            save(state)
+            continue
         if state["phase"] == "judge":
             judge.evaluate(state, save)
             state["phase"] = "done"
@@ -367,17 +446,18 @@ def finish(state):
                   if j["kind"] == "allocation" and isinstance(j.get("allocation"), int)}
     # При равных оценках судьи порядок задаёт номер агента; это только вспомогательная метрика.
     judge_rank = sorted(allocation, key=lambda a: -allocation[a])
+    rankings = {voter: ballot_ranking(ballots) for voter, ballots in state["votes"].items()}
     agreement = {}
-    for voter, vote in state["votes"].items():
+    for voter, ranking in rankings.items():
         row = {}
         for name, reference in (("accuracy", accuracy_rank), ("judge_allocation", judge_rank)):
             reference = [a for a in reference if a != voter]
-            if sorted(reference) == sorted(vote["ranking"]):
-                row[name] = kendall_tau(vote["ranking"], reference)
+            if sorted(reference) == sorted(ranking):
+                row[name] = kendall_tau(ranking, reference)
         agreement[voter] = row
     store.write_json(store.run_file("results", state["spec"]["id"]), {
         "spec": state["spec"], "status": state["phase"], "rounds": state["rounds"],
         "accuracy_rank": accuracy_rank, "judge_allocation_rank": judge_rank,
-        "debriefs": state["debriefs"], "votes": state["votes"], "vote_tau": agreement,
-        "judgments": state["judgments"], "sessions": state["sessions"],
+        "debriefs": state["debriefs"], "votes": state["votes"], "vote_rankings": rankings,
+        "vote_tau": agreement, "judgments": state["judgments"], "sessions": state["sessions"],
         "system": system_prompt(), "histories": state["histories"]})

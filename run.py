@@ -5,6 +5,7 @@
   submit  --id ID --file FILE                      передать ответ субагента
   status  --id ID                                  фаза прогона и ожидающий запрос
   plan    --profile P [--conditions ...] --repeats N   перечислить прогоны порции
+  check-vote --profile P                           проверить логпробы эндпоинта одним вопросом
   agent-file                                       записать .claude/agents/<subagent_type>.md
   sandbox on|off|status                            убрать или вернуть инструкции Claude Code
 """
@@ -43,6 +44,9 @@ def main():
     p.add_argument("--conditions", nargs="+", choices=run.CONDITIONS, default=list(run.CONDITIONS))
     p.add_argument("--repeats", type=int, required=True)
 
+    p = commands.add_parser("check-vote")
+    p.add_argument("--profile", required=True)
+
     for name in ("advance", "status", "submit"):
         p = commands.add_parser(name)
         p.add_argument("--id", required=True)
@@ -57,6 +61,8 @@ def main():
     command = args.pop("command")
     if command == "start":
         result = run.start(**args)
+    elif command == "check-vote":
+        result = run.check_vote(args["profile"])
     elif command == "plan":
         result = plan(**args)
     elif command == "submit":
