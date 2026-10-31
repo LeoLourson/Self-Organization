@@ -5,16 +5,18 @@
   submit  --id ID --file FILE                      передать ответ субагента
   status  --id ID                                  фаза прогона и ожидающий запрос
   plan    --profile P [--conditions ...] --repeats N   перечислить прогоны порции
+  analyze [--save]                                 сводка и статистики по всем прогонам
   check-vote --profile P                           проверить логпробы эндпоинта одним вопросом
   agent-file                                       записать .claude/agents/<subagent_type>.md
   sandbox on|off|status                            убрать или вернуть инструкции Claude Code
 """
 import argparse
+import datetime
 import json
 import sys
 from pathlib import Path
 
-from netexp import run, sandbox, store
+from netexp import analysis, run, sandbox, store
 
 
 def plan(profile, conditions, repeats):
@@ -44,6 +46,9 @@ def main():
     p.add_argument("--conditions", nargs="+", choices=run.CONDITIONS, default=list(run.CONDITIONS))
     p.add_argument("--repeats", type=int, required=True)
 
+    p = commands.add_parser("analyze")
+    p.add_argument("--save", action="store_true", help="записать отчёт в reports/ вместо вывода на экран")
+
     p = commands.add_parser("check-vote")
     p.add_argument("--profile", required=True)
 
@@ -59,7 +64,17 @@ def main():
 
     args = vars(parser.parse_args())
     command = args.pop("command")
-    if command == "start":
+    if command == "analyze":
+        markdown = analysis.report()
+        if args["save"]:
+            path = store.ROOT / "reports" / f"analysis-{datetime.date.today().isoformat()}.md"
+            path.parent.mkdir(exist_ok=True)
+            path.write_text(markdown + "\n", encoding="utf-8")
+            result = {"report": store.relative(path)}
+        else:
+            print(markdown)
+            return
+    elif command == "start":
         result = run.start(**args)
     elif command == "check-vote":
         result = run.check_vote(args["profile"])

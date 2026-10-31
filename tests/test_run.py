@@ -10,7 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from netexp import llm, run, sandbox, store
+from netexp import analysis, llm, run, sandbox, store
 
 PROJECT = store.ROOT
 ROLES = list(store.read_json(PROJECT / "prompts/roles.json"))
@@ -312,6 +312,117 @@ class LlmChoiceTests(unittest.TestCase):
         LlmChoiceTests.FakeOpenAI.responses = [self.logprob_response("2", [("1", -1.0), ("2", -0.3)])]
         values = llm.choice(self.profile, "s3", self.messages, ("1", "2"))
         self.assertEqual(values["2"], -0.3)
+
+
+def synthetic_rounds(fixed):
+    """Пять раундов: роли закреплены за агентами или уходят от них циклическим сдвигом."""
+    roles = {"A1": "моделист", "A2": "статистик", "A3": "сценарист", "A4": "критик", "A5": "историк"}
+    rounds = []
+    for index in range(5):
+        organizer = f"A{index + 1}"
+        workers = [a for a in ("A1", "A2", "A3", "A4", "A5") if a != organizer]
+        values = [roles[a] for a in workers]
+        assignment = {a: roles[a] for a in workers} if fixed else \
+            {a: values[(i + index + 1) % len(values)] for i, a in enumerate(workers)}
+        rounds.append({"organizer": organizer, "origin": 0,
+                       "assignments": {a: {"role": r, "task": ""} for a, r in assignment.items()},
+                       "answers": {}, "mase": 0.5, "forecast": [], "actual": []})
+    return rounds
+
+
+def ballot(x, y, value):
+    """Пара с перевесом value в пользу x (порядок пары канонический)."""
+    return {"pair": [x, y], "one": x, "logprob": {x: value / 2, y: -value / 2}}
+
+
+def linear_ballots(others):
+    """Попарные голоса агента, предпочитающего меньшие имена."""
+    return [ballot(x, y, 1.0) for x, y in run.pairs(others)]
+
+
+class AnalysisTests(unittest.TestCase):
+    """Статистики анализа на синтетических прогонах без запросов к моделям."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        shutil.copytree(PROJECT / "prompts", self.root / "prompts")
+        self.root.joinpath("runs/results").mkdir(parents=True)
+        self.root.joinpath("runs/state").mkdir(parents=True)
+        self.root.joinpath("data").mkdir()
+        rows = ["week,value"] + [f"{i},{20 + 5 * math.sin(i / 3):.1f}" for i in range(80)]
+        self.root.joinpath("data/test.csv").write_text("\n".join(rows), encoding="utf-8")
+        cfg = store.read_json(PROJECT / "config.json")
+        cfg["data"] = "data/test.csv"
+        (self.root / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+        context = patch.object(store, "ROOT", self.root)
+        context.start()
+        self.addCleanup(context.stop)
+
+    def write_run(self, ident, condition, votes, fixed=True, status="done", judgments=()):
+        data = {"spec": {"id": ident, "condition": condition, "repeat": 0}, "status": status,
+                "rounds": synthetic_rounds(fixed), "votes": votes, "judgments": list(judgments)}
+        store.write_json(store.run_file("results", ident), data)
+        return data
+
+    def test_runs_include_incomplete_states(self):
+        """Незавершённый прогон с полными голосами попадает в анализ."""
+        self.write_run("a" * 24, "open", {})
+        votes = {v: {"ranking": [a for a in run.names() if a != v], "reason": ""}
+                 for v in run.names()}
+        state = {"spec": {"id": "b" * 24, "condition": "closed", "repeat": 0}, "phase": "judge",
+                 "rounds": synthetic_rounds(True), "votes": votes, "judgments": []}
+        store.write_json(store.run_file("state", "b" * 24), state)
+        found = analysis.runs()
+        self.assertEqual({d["spec"]["id"] for d in found}, {"a" * 24, "b" * 24})
+        self.assertEqual(analysis.status(state), "остановлен на судье")
+        self.assertEqual(analysis.vote_kind(state), "ранжирование")
+
+    def test_fixation_above_chance(self):
+        rounds = synthetic_rounds(fixed=True)
+        value = analysis.fixation(rounds)
+        self.assertEqual(value["observed"], value["pairs"])  # роли закреплены намертво
+        self.assertLess(value["p"], 0.001)
+        shuffled = analysis.fixation(synthetic_rounds(fixed=False))
+        self.assertLess(shuffled["observed"], value["observed"])
+        self.assertGreater(shuffled["p"], value["p"])
+
+    def test_linearity(self):
+        agents = ["A1", "A2", "A3", "A4", "A5"]
+        order = {a: i for i, a in enumerate(agents)}
+        wins = {a: sum(1 for b in agents if b != a and order[a] < order[b]) for a in agents}
+        self.assertEqual(analysis.linearity(wins), 1.0)
+        cycle = {"A1": 3, "A2": 3, "A3": 3, "A4": 1, "A5": 0}  # тройка A1–A2–A3 идёт по кругу
+        self.assertLess(analysis.linearity(cycle), 1.0)
+
+    def test_majority_and_transitivity(self):
+        agents, votes = run.names(), {}
+        for voter in agents:
+            votes[voter] = linear_ballots([a for a in agents if a != voter])
+        wins, scores, undecided = analysis.majority(votes, agents)
+        self.assertEqual(wins, {"A1": 4, "A2": 3, "A3": 2, "A4": 1, "A5": 0})
+        self.assertTrue(all(max(s) == 3 for s in scores.values()))
+        self.assertEqual(undecided, 0)
+        self.assertEqual(analysis.transitivity(votes["A1"]), 1.0)
+        # цикл A2>A3>A4>A2 ломает одну тройку из четырёх
+        cycle = [b for b in votes["A1"]]
+        for b in cycle:
+            if b["pair"] == ["A2", "A4"]:
+                b["logprob"] = {"A2": -0.5, "A4": 0.5}
+        self.assertAlmostEqual(analysis.transitivity(cycle), 0.75)
+
+    def test_report_written_and_sounded(self):
+        votes = {v: linear_ballots([a for a in run.names() if a != v]) for v in run.names()}
+        self.write_run("c" * 24, "open", votes, fixed=True)
+        markdown = analysis.report()
+        self.assertIn("## Условие `open`", markdown)
+        self.assertIn("Закрепление ролей", markdown)
+        self.assertIn("Голосование", markdown)
+        self.assertIn("A1 > A2 > A3 > A4 > A5", markdown)
+        self.assertNotIn("None", markdown)
+        # Отчёт воспроизводим: фиксированное зерно
+        self.assertEqual(analysis.report(), markdown)
 
 
 if __name__ == "__main__":
