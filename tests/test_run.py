@@ -174,6 +174,34 @@ class RunTests(unittest.TestCase):
         data = store.read_json(store.run_file("results", ident))
         self.assertEqual(data["sessions"], {a: f"sub-{a}" for a in run.names()})
 
+    def test_results_include_observables(self):
+        with patch.object(llm, "call", self.fake_call):
+            ident = run.start("deepseek", "open")["id"]
+            run.advance(ident)
+        observed = store.read_json(store.run_file("results", ident))["observables"]
+        self.assertEqual(sum(observed["role_matrix"]["A1"].values()), 4)  # A1 был организатором в раунде 1
+        self.assertEqual(len(observed["conventions"]), 5)
+        self.assertEqual(observed["conventions"][0], 0.0)
+        self.assertTrue(all(0 <= value <= 1 for value in observed["specialization"].values()))
+        self.assertEqual(sum(sum(row.values()) for row in observed["links"].values()), 20)
+
+    def test_local_profile_and_logprobs(self):
+        profile = store.profile("local_6b")
+        self.assertEqual(profile["engine"], "local")
+        base_url, api_key = llm.endpoint(store.config()["engines"]["local"])
+        self.assertTrue(base_url.startswith("http://localhost"))
+        self.assertEqual(api_key, "local")  # ключ локальному серверу не нужен
+        self.assertIsNone(llm.cached_logprobs("нет такого запроса"))
+        token = lambda name, lp, top: SimpleNamespace(token=name, logprob=lp, top_logprobs=top)
+        choice = SimpleNamespace(logprobs=SimpleNamespace(content=[
+            token("{'forecast'", -0.1, []), token(":", -0.2, []),
+            token(" 10", -0.5, [token(" 12", -1.2, [])]), token(" 9", -0.3, [])]))
+        summary = llm.number_logprobs(choice)
+        self.assertEqual(summary["n_tokens"], 4)
+        self.assertEqual([n["token"] for n in summary["numbers"]], [" 10", " 9"])
+        self.assertEqual(summary["numbers"][0]["top"][0]["token"], " 12")
+        self.assertIsNone(llm.number_logprobs(SimpleNamespace(logprobs=None)))
+
     def test_kendall_tau(self):
         self.assertEqual(run.kendall_tau(["a", "b", "c"], ["a", "b", "c"]), 1)
         self.assertEqual(run.kendall_tau(["c", "b", "a"], ["a", "b", "c"]), -1)

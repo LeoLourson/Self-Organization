@@ -22,8 +22,10 @@
       "key_env": "ANTHROPIC_API_KEY"
     },
     "local": {
-      "base_url": "http://127.0.0.1:11434/v1",
-      "key_env": "LOCAL_API_KEY"
+      "base_url": "http://localhost:11434/v1",
+      "base_url_env": "LOCAL_BASE_URL",
+      "key_env": "LOCAL_API_KEY",
+      "key_optional": true
     }
   },
   "profiles": {
@@ -56,6 +58,12 @@
       "engine": "local",
       "model": "qwen2.5:1.5b",
       "settings": {}
+    },
+    "local_6b": {
+      "transport": "api",
+      "engine": "local",
+      "model": "yandex/YandexGPT5-Lite-6B",
+      "settings": {"temperature": 0.5, "max_tokens": 2000, "logprobs": true, "top_logprobs": 5}
     }
   },
   "sandbox": {

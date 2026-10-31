@@ -444,7 +444,15 @@ def advance(ident):
             answer = llm.call(profile, scope, messages)
             if answer:
                 break
+        was_forecast, round_index = state["phase"] == "forecast", state["round"]
         accept(state, answer)
+        if was_forecast and state["retry"] is None:
+            # Уверенность организатора в числах прогноза: логиты появляются, только если
+            # сервер их отдаёт (профиль local_6b), иначе поле просто не возникает.
+            summary = llm.cached_logprobs(scope)
+            if summary:
+                state["rounds"][round_index]["forecast_confidence"] = summary
+                save(state)
     return status(ident)
 
 
