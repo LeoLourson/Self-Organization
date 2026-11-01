@@ -96,6 +96,13 @@
       "model": "google/gemma-4-26b-a4b-it",
       "settings": {"temperature": 0.5, "max_tokens": 2000, "logprobs": true, "top_logprobs": 5,
                    "extra_body": {"provider": {"only": ["darkbloom", "nextbit", "coreweave", "parasail"]}}}
+    },
+    "api_qwen38": {
+      "transport": "api",
+      "engine": "routerai",
+      "model": "qwen/qwen3.8-27b",
+      "settings": {"temperature": 0.5, "max_tokens": 2000, "logprobs": true, "top_logprobs": 5,
+                   "extra_body": {"provider": {"only": ["primeintellect"]}}}
     }
   },
   "sandbox": {
