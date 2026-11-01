@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 /STOP
 /backup/
+/.tmp-tests/
+/probe_dir/
 *.sqlite3-journal
 *.sqlite3-wal
 *.sqlite3-shm

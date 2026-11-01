@@ -8,7 +8,7 @@
   "data": "data/series.csv",
   "subagent_type": "net-agent",
   "vote_profile": "sonnet_api",
-  "judge_profile": "deepseek",
+  "judge_profile": "judge",
   "api": {
     "max_tokens": 16000,
     "max_requests": 5000
@@ -37,6 +37,12 @@
   },
   "profiles": {
     "deepseek": {
+      "transport": "api",
+      "engine": "deepseek",
+      "model": "deepseek-flash",
+      "settings": {}
+    },
+    "judge": {
       "transport": "api",
       "engine": "deepseek",
       "model": "deepseek-flash",

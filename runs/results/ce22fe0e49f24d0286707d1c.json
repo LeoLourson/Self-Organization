@@ -1,0 +1,251 @@
+{
+  "spec": {
+    "id": "ce22fe0e49f24d0286707d1c",
+    "version": 4,
+    "protocol": "b918266361f7",
+    "profile": {
+      "id": "api_gemma26",
+      "transport": "api",
+      "engine": "routerai",
+      "model": "google/gemma-4-26b-a4b-it",
+      "settings": {
+        "temperature": 0.5,
+        "max_tokens": 2000,
+        "logprobs": true,
+        "top_logprobs": 5,
+        "extra_body": {
+          "provider": {
+            "only": [
+              "darkbloom",
+              "nextbit",
+              "coreweave",
+              "parasail"
+            ]
+          }
+        }
+      }
+    },
+    "condition": "solo",
+    "repeat": 1,
+    "vote": null,
+    "judge": null,
+    "role_order": [
+      "modeler",
+      "calendar",
+      "statistician",
+      "critic",
+      "historian",
+      "scenarist"
+    ]
+  },
+  "status": "done",
+  "rounds": [
+    {
+      "organizer": "A2",
+      "origin": 52,
+      "assignments": {},
+      "answers": {},
+      "forecast": [
+        65.0,
+        82.0,
+        95.0,
+        78.0
+      ],
+      "actual": [
+        57.0,
+        94.0,
+        54.0,
+        55.0
+      ],
+      "mase": 0.43501218521527213,
+      "summary": "Round 1 results.\nYour forecast:\nweek 53: 65\nweek 54: 82\nweek 55: 95\nweek 56: 78\nReal values:\nweek 53: 57\nweek 54: 94\nweek 55: 54\nweek 56: 55"
+    },
+    {
+      "organizer": "A3",
+      "origin": 56,
+      "assignments": {},
+      "answers": {},
+      "forecast": [
+        75.0,
+        92.0,
+        115.0,
+        108.0
+      ],
+      "actual": [
+        78.0,
+        58.0,
+        78.0,
+        52.0
+      ],
+      "mase": 0.7953454894433781,
+      "summary": "Round 2 results.\nYour forecast:\nweek 57: 75\nweek 58: 92\nweek 59: 115\nweek 60: 108\nReal values:\nweek 57: 78\nweek 58: 58\nweek 59: 78\nweek 60: 52"
+    },
+    {
+      "organizer": "A4",
+      "origin": 60,
+      "assignments": {},
+      "answers": {},
+      "forecast": [
+        65.0,
+        82.0,
+        78.0,
+        95.0
+      ],
+      "actual": [
+        89.0,
+        86.0,
+        59.0,
+        87.0
+      ],
+      "mase": 0.41494082840236685,
+      "summary": "Round 3 results.\nYour forecast:\nweek 61: 65\nweek 62: 82\nweek 63: 78\nweek 64: 95\nReal values:\nweek 61: 89\nweek 62: 86\nweek 63: 59\nweek 64: 87"
+    },
+    {
+      "organizer": "A5",
+      "origin": 64,
+      "assignments": {},
+      "answers": {},
+      "forecast": [
+        75.0,
+        82.0,
+        68.0,
+        74.0
+      ],
+      "actual": [
+        142.0,
+        115.0,
+        91.0,
+        54.0
+      ],
+      "mase": 1.0872093023255813,
+      "summary": "Round 4 results.\nYour forecast:\nweek 65: 75\nweek 66: 82\nweek 67: 68\nweek 68: 74\nReal values:\nweek 65: 142\nweek 66: 115\nweek 67: 91\nweek 68: 54"
+    },
+    {
+      "organizer": "A1",
+      "origin": 68,
+      "assignments": {},
+      "answers": {},
+      "forecast": [
+        72.0,
+        85.0,
+        94.0,
+        88.0
+      ],
+      "actual": [
+        54.0,
+        93.0,
+        81.0,
+        93.0
+      ],
+      "mase": 0.3220436280137773,
+      "summary": "Round 5 results.\nYour forecast:\nweek 69: 72\nweek 70: 85\nweek 71: 94\nweek 72: 88\nReal values:\nweek 69: 54\nweek 70: 93\nweek 71: 81\nweek 72: 93"
+    }
+  ],
+  "accuracy_rank": [
+    "A1",
+    "A4",
+    "A2",
+    "A3",
+    "A5"
+  ],
+  "judge_allocation_rank": [],
+  "debriefs": {},
+  "votes": {},
+  "vote_rankings": {},
+  "vote_tau": {},
+  "judgments": [],
+  "sessions": {
+    "A1": null,
+    "A2": null,
+    "A3": null,
+    "A4": null,
+    "A5": null
+  },
+  "observables": {
+    "role_matrix": {},
+    "specialization": {},
+    "links": {
+      "A2": {},
+      "A3": {},
+      "A4": {},
+      "A5": {},
+      "A1": {}
+    },
+    "conventions": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "system": "You are one of 5 identical agents (A1, A2, A3, A4, A5) working together on one task. Messages come from an environment that passes assignments and answers between the agents.\n\nThe group's task is to forecast the P-index. The P-index is the weekly number of protest events in one country, counted from open sources (news). The country and the real dates are hidden, and weeks are numbered in order. The index is linked to real quantities: the number of protest participants, the intensity of repression, external triggers such as reforms, elections or high-profile incidents, and the time of year. There is no internet access, but your own knowledge of protests and their dynamics is as admissible a source as the series itself.\n\nThe work proceeds in rounds. In each round one agent is the organizer: it assigns each of the others a role from the list of roles and a specific task within that role, collects the answers and gives the final forecast. One role may be given to several agents, and some roles may be left unused. After the round the real values are revealed, and the organizer role passes to another agent. Every agent serves as organizer once.\n\nExternal experts evaluate the group's work, and not only by forecast accuracy: they separately rate how well the organizer distributed the roles and how well each agent performed its role. The ratings are not reported to the agents.\n\nAnswer strictly in the format specified in the message.",
+  "histories": {
+    "A1": [
+      {
+        "role": "user",
+        "content": "Round 5 of 5. You make this forecast alone.\n\nP-index values:\nweek 17: 96\nweek 18: 265\nweek 19: 155\nweek 20: 177\nweek 21: 125\nweek 22: 173\nweek 23: 88\nweek 24: 252\nweek 25: 165\nweek 26: 149\nweek 27: 118\nweek 28: 114\nweek 29: 93\nweek 30: 74\nweek 31: 58\nweek 32: 71\nweek 33: 54\nweek 34: 62\nweek 35: 82\nweek 36: 88\nweek 37: 69\nweek 38: 79\nweek 39: 102\nweek 40: 106\nweek 41: 83\nweek 42: 58\nweek 43: 98\nweek 44: 64\nweek 45: 50\nweek 46: 102\nweek 47: 115\nweek 48: 113\nweek 49: 132\nweek 50: 71\nweek 51: 103\nweek 52: 51\nweek 53: 57\nweek 54: 94\nweek 55: 54\nweek 56: 55\nweek 57: 78\nweek 58: 58\nweek 59: 78\nweek 60: 52\nweek 61: 89\nweek 62: 86\nweek 63: 59\nweek 64: 87\nweek 65: 142\nweek 66: 115\nweek 67: 91\nweek 68: 54\n\nA forecast is needed for 4 weeks: week 69, week 70, week 71, week 72.\n\nAnswer only with JSON, no explanations:\n{\"forecast\": [4 numbers in week order]}"
+      },
+      {
+        "role": "user",
+        "content": "Round 5 results.\nYour forecast:\nweek 69: 72\nweek 70: 85\nweek 71: 94\nweek 72: 88\nReal values:\nweek 69: 54\nweek 70: 93\nweek 71: 81\nweek 72: 93"
+      }
+    ],
+    "A2": [
+      {
+        "role": "user",
+        "content": "Round 1 of 5. You make this forecast alone.\n\nP-index values:\nweek 1: 19\nweek 2: 84\nweek 3: 55\nweek 4: 214\nweek 5: 423\nweek 6: 128\nweek 7: 129\nweek 8: 240\nweek 9: 164\nweek 10: 163\nweek 11: 109\nweek 12: 85\nweek 13: 56\nweek 14: 70\nweek 15: 80\nweek 16: 61\nweek 17: 96\nweek 18: 265\nweek 19: 155\nweek 20: 177\nweek 21: 125\nweek 22: 173\nweek 23: 88\nweek 24: 252\nweek 25: 165\nweek 26: 149\nweek 27: 118\nweek 28: 114\nweek 29: 93\nweek 30: 74\nweek 31: 58\nweek 32: 71\nweek 33: 54\nweek 34: 62\nweek 35: 82\nweek 36: 88\nweek 37: 69\nweek 38: 79\nweek 39: 102\nweek 40: 106\nweek 41: 83\nweek 42: 58\nweek 43: 98\nweek 44: 64\nweek 45: 50\nweek 46: 102\nweek 47: 115\nweek 48: 113\nweek 49: 132\nweek 50: 71\nweek 51: 103\nweek 52: 51\n\nA forecast is needed for 4 weeks: week 53, week 54, week 55, week 56.\n\nAnswer only with JSON, no explanations:\n{\"forecast\": [4 numbers in week order]}"
+      },
+      {
+        "role": "user",
+        "content": "Round 1 results.\nYour forecast:\nweek 53: 65\nweek 54: 82\nweek 55: 95\nweek 56: 78\nReal values:\nweek 53: 57\nweek 54: 94\nweek 55: 54\nweek 56: 55"
+      },
+      {
+        "role": "assistant",
+        "content": "```json\n{\"forecast\": [65, 82, 95, 78]}\n```"
+      }
+    ],
+    "A3": [
+      {
+        "role": "user",
+        "content": "Round 2 of 5. You make this forecast alone.\n\nP-index values:\nweek 5: 423\nweek 6: 128\nweek 7: 129\nweek 8: 240\nweek 9: 164\nweek 10: 163\nweek 11: 109\nweek 12: 85\nweek 13: 56\nweek 14: 70\nweek 15: 80\nweek 16: 61\nweek 17: 96\nweek 18: 265\nweek 19: 155\nweek 20: 177\nweek 21: 125\nweek 22: 173\nweek 23: 88\nweek 24: 252\nweek 25: 165\nweek 26: 149\nweek 27: 118\nweek 28: 114\nweek 29: 93\nweek 30: 74\nweek 31: 58\nweek 32: 71\nweek 33: 54\nweek 34: 62\nweek 35: 82\nweek 36: 88\nweek 37: 69\nweek 38: 79\nweek 39: 102\nweek 40: 106\nweek 41: 83\nweek 42: 58\nweek 43: 98\nweek 44: 64\nweek 45: 50\nweek 46: 102\nweek 47: 115\nweek 48: 113\nweek 49: 132\nweek 50: 71\nweek 51: 103\nweek 52: 51\nweek 53: 57\nweek 54: 94\nweek 55: 54\nweek 56: 55\n\nA forecast is needed for 4 weeks: week 57, week 58, week 59, week 60.\n\nAnswer only with JSON, no explanations:\n{\"forecast\": [4 numbers in week order]}"
+      },
+      {
+        "role": "user",
+        "content": "Round 2 results.\nYour forecast:\nweek 57: 75\nweek 58: 92\nweek 59: 115\nweek 60: 108\nReal values:\nweek 57: 78\nweek 58: 58\nweek 59: 78\nweek 60: 52"
+      },
+      {
+        "role": "assistant",
+        "content": "```json\n{\"forecast\": [75, 92, 115, 108]}\n```"
+      }
+    ],
+    "A4": [
+      {
+        "role": "user",
+        "content": "Round 3 of 5. You make this forecast alone.\n\nP-index values:\nweek 9: 164\nweek 10: 163\nweek 11: 109\nweek 12: 85\nweek 13: 56\nweek 14: 70\nweek 15: 80\nweek 16: 61\nweek 17: 96\nweek 18: 265\nweek 19: 155\nweek 20: 177\nweek 21: 125\nweek 22: 173\nweek 23: 88\nweek 24: 252\nweek 25: 165\nweek 26: 149\nweek 27: 118\nweek 28: 114\nweek 29: 93\nweek 30: 74\nweek 31: 58\nweek 32: 71\nweek 33: 54\nweek 34: 62\nweek 35: 82\nweek 36: 88\nweek 37: 69\nweek 38: 79\nweek 39: 102\nweek 40: 106\nweek 41: 83\nweek 42: 58\nweek 43: 98\nweek 44: 64\nweek 45: 50\nweek 46: 102\nweek 47: 115\nweek 48: 113\nweek 49: 132\nweek 50: 71\nweek 51: 103\nweek 52: 51\nweek 53: 57\nweek 54: 94\nweek 55: 54\nweek 56: 55\nweek 57: 78\nweek 58: 58\nweek 59: 78\nweek 60: 52\n\nA forecast is needed for 4 weeks: week 61, week 62, week 63, week 64.\n\nAnswer only with JSON, no explanations:\n{\"forecast\": [4 numbers in week order]}"
+      },
+      {
+        "role": "user",
+        "content": "Round 3 results.\nYour forecast:\nweek 61: 65\nweek 62: 82\nweek 63: 78\nweek 64: 95\nReal values:\nweek 61: 89\nweek 62: 86\nweek 63: 59\nweek 64: 87"
+      },
+      {
+        "role": "assistant",
+        "content": "```json\n{\"forecast\": [65, 82, 78, 95]}\n```"
+      }
+    ],
+    "A5": [
+      {
+        "role": "user",
+        "content": "Round 4 of 5. You make this forecast alone.\n\nP-index values:\nweek 13: 56\nweek 14: 70\nweek 15: 80\nweek 16: 61\nweek 17: 96\nweek 18: 265\nweek 19: 155\nweek 20: 177\nweek 21: 125\nweek 22: 173\nweek 23: 88\nweek 24: 252\nweek 25: 165\nweek 26: 149\nweek 27: 118\nweek 28: 114\nweek 29: 93\nweek 30: 74\nweek 31: 58\nweek 32: 71\nweek 33: 54\nweek 34: 62\nweek 35: 82\nweek 36: 88\nweek 37: 69\nweek 38: 79\nweek 39: 102\nweek 40: 106\nweek 41: 83\nweek 42: 58\nweek 43: 98\nweek 44: 64\nweek 45: 50\nweek 46: 102\nweek 47: 115\nweek 48: 113\nweek 49: 132\nweek 50: 71\nweek 51: 103\nweek 52: 51\nweek 53: 57\nweek 54: 94\nweek 55: 54\nweek 56: 55\nweek 57: 78\nweek 58: 58\nweek 59: 78\nweek 60: 52\nweek 61: 89\nweek 62: 86\nweek 63: 59\nweek 64: 87\n\nA forecast is needed for 4 weeks: week 65, week 66, week 67, week 68.\n\nAnswer only with JSON, no explanations:\n{\"forecast\": [4 numbers in week order]}"
+      },
+      {
+        "role": "user",
+        "content": "Round 4 results.\nYour forecast:\nweek 65: 75\nweek 66: 82\nweek 67: 68\nweek 68: 74\nReal values:\nweek 65: 142\nweek 66: 115\nweek 67: 91\nweek 68: 54"
+      },
+      {
+        "role": "assistant",
+        "content": "{\"forecast\": [75, 82, 68, 74]}"
+      }
+    ]
+  }
+}

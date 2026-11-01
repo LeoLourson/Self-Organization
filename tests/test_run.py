@@ -18,7 +18,7 @@ ROLES = list(store.read_json(PROJECT / "prompts/roles.json"))
 
 def fake_answer(message, tag="?"):
     """Корректный ответ на последнее сообщение среды, как дал бы послушный агент или судья."""
-    if "Ответ не принят" in message:
+    if "The answer was not accepted" in message:
         message = fake_answer.last
     fake_answer.last = message
     if '{"assignments"' in message:
@@ -34,10 +34,25 @@ def fake_answer(message, tag="?"):
     return f"ответ {tag}"
 
 
+def temp_directory():
+    """Временный каталог, доступный создавшему его процессу.
+
+    Python 3.14 в Windows переводит режим 0o700 у каталога в ACL: доступ остаётся только
+    у владельца. Под песочницей агента процесс работает с ограниченным токеном, и созданный
+    им же каталог оказывается недоступен — даже на запись. Поэтому режим 0o777.
+    """
+    original = os.mkdir
+    os.mkdir = lambda path, mode=0o777, *args, **kwargs: original(path, 0o777, *args, **kwargs)
+    try:
+        return tempfile.TemporaryDirectory()
+    finally:
+        os.mkdir = original
+
+
 class RunTests(unittest.TestCase):
     def setUp(self):
         """Тексты проекта и синтетический ряд во временном корне."""
-        directory = tempfile.TemporaryDirectory()
+        directory = temp_directory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
         shutil.copytree(PROJECT / "prompts", self.root / "prompts")
@@ -63,7 +78,7 @@ class RunTests(unittest.TestCase):
     def fake_choice(self, profile, scope, messages, candidates):
         """Попарный вопрос: перевес в пользу агента с меньшим именем."""
         question = messages[-1]["content"]
-        first, second = re.findall(r"организатором: (A\d+) или (A\d+)", question)[0]
+        first, second = re.findall(r"organizer: (A\d+) or (A\d+)", question)[0]
         strong, weak = sorted([first, second])
         values = {"1": -0.5 if first == strong else -1.5, "2": -1.5 if first == strong else -0.5}
         self.choices.append((profile["id"], first, second))
@@ -90,7 +105,7 @@ class RunTests(unittest.TestCase):
         last = agents[-1][1]
         self.assertEqual(last[0]["role"], "system")
         self.assertGreater(len(last), 10)
-        self.assertIn("Список ролей", last[1]["content"])
+        self.assertIn("The list of roles", last[1]["content"])
 
     def test_judge_does_not_see_outcome_or_agents_see_judge(self):
         with patch.object(llm, "call", self.fake_call), patch.object(llm, "choice", self.fake_choice):
@@ -99,11 +114,11 @@ class RunTests(unittest.TestCase):
         data = store.read_json(store.run_file("results", ident))
         for profile, messages in self.calls:
             if profile == store.config()["judge_profile"]:
-                self.assertNotIn("Реальные значения", messages[-1]["content"])
-                self.assertNotIn("Организатор:", messages[-1]["content"])
+                self.assertNotIn("Real values", messages[-1]["content"])
+                self.assertNotIn("Organizer:", messages[-1]["content"])
         seen = json.dumps(data["histories"], ensure_ascii=False)
         self.assertNotIn("role_fit", seen)
-        self.assertNotIn("Кого ты назначил", seen)  # вопросы голосования в истории не остаются
+        self.assertNotIn("Whom would you appoint", seen)  # вопросы голосования в истории не остаются
 
     def test_conditions_control_summary(self):
         with patch.object(llm, "call", self.fake_call), patch.object(llm, "choice", self.fake_choice):
@@ -111,9 +126,9 @@ class RunTests(unittest.TestCase):
                 ident = run.start("deepseek", condition)["id"]
                 run.advance(ident)
                 summary = store.read_json(store.run_file("results", ident))["rounds"][0]["summary"]
-                self.assertEqual("Роли и задания" in summary, assignments, condition)
-                self.assertIn("Прогноз организатора", summary)
-                self.assertIn("Реальные значения", summary)
+                self.assertEqual("Roles and tasks" in summary, assignments, condition)
+                self.assertIn("Organizer's forecast", summary)
+                self.assertIn("Real values", summary)
                 self.assertNotIn("MASE", summary)
 
     def test_role_order_shuffled_per_run(self):
@@ -123,26 +138,26 @@ class RunTests(unittest.TestCase):
 
     def test_missing_closing_brace_repaired(self):
         """Потерянная скобка в конце ответа дописывается; ошибка внутри JSON по-прежнему отказ."""
-        text = '{"assignments": {"A2": {"role": "историк", "task": "описать волны"}}'
+        text = '{"assignments": {"A2": {"role": "historian", "task": "describe waves"}}'
         self.assertEqual(run.parse_json(text),
-                         {"assignments": {"A2": {"role": "историк", "task": "описать волны"}}})
+                         {"assignments": {"A2": {"role": "historian", "task": "describe waves"}}})
         with self.assertRaises(ValueError):
-            run.parse_json('{"assignments": {"A2" {"role": "историк"}}')
+            run.parse_json('{"assignments": {"A2" {"role": "historian"}}')
 
     def test_role_outside_menu_rejected(self):
-        bad = json.dumps({"assignments": {a: {"role": "эконометрист", "task": "x"}
+        bad = json.dumps({"assignments": {a: {"role": "econometrician", "task": "x"}
                                           for a in ("A2", "A3", "A4", "A5")}}, ensure_ascii=False)
         with patch.object(llm, "call", lambda p, s, m: bad):
             ident = run.start("deepseek", "closed")["id"]
             result = run.advance(ident)
         self.assertEqual(result["phase"], "failed")
         history = store.read_json(store.run_file("state", ident))["histories"]["A1"]
-        self.assertIn("Ответ не принят", history[1]["content"])
+        self.assertIn("The answer was not accepted", history[1]["content"])
         # Некорректный ответ в историю не попадает: в ней только запросы среды.
         self.assertTrue(all(m["role"] == "user" for m in history))
 
     def test_task_length_limit(self):
-        task = " ".join(["слово"] * 61)
+        task = " ".join(["word"] * 61)
         bad = json.dumps({"assignments": {a: {"role": ROLES[0], "task": task}
                                           for a in ("A2", "A3", "A4", "A5")}}, ensure_ascii=False)
         with patch.object(llm, "call", lambda p, s, m: bad):
@@ -157,7 +172,7 @@ class RunTests(unittest.TestCase):
         def long_answer(messages, tag="?"):
             if '{"assignments"' in messages[-1]["content"]:
                 return fake_answer(messages[-1]["content"], tag)
-            return " ".join(["слово"] * 151)
+            return " ".join(["word"] * 151)
         with patch.object(llm, "call", lambda p, s, m: long_answer(m, s)):
             ident = run.start("deepseek", "closed")["id"]
             result = run.advance(ident)
@@ -189,7 +204,7 @@ class RunTests(unittest.TestCase):
                 agent = request["agent"]
                 self.assertEqual(request["agent_id"], sessions.get(agent))
                 if request["agent_id"]:
-                    self.assertNotIn("Ты — агент", request["message"])
+                    self.assertNotIn("You are agent", request["message"])
                 sessions.setdefault(agent, f"sub-{agent}")
                 envelope = {"request_id": request["request_id"],
                             "content": fake_answer(request["message"], request["request_id"]),
@@ -282,8 +297,8 @@ class RunTests(unittest.TestCase):
         self.assertEqual([c for c in self.calls if c[0] == store.config()["judge_profile"]], [])
         self.assertEqual(self.choices, [])                  # голосования нет
         for profile, messages in agents:
-            self.assertIn("самостоятельно", messages[0]["content"])   # системный промпт solo
-            self.assertNotIn("Список ролей", json.dumps(messages, ensure_ascii=False))
+            self.assertIn("on their own", messages[0]["content"])   # системный промпт solo
+            self.assertNotIn("The list of roles", json.dumps(messages, ensure_ascii=False))
 
     def test_solo_summary_stays_with_forecaster(self):
         """Итоги раунда в solo видит только прогнозист; у каждого — одно задание и одни итоги."""
@@ -297,7 +312,7 @@ class RunTests(unittest.TestCase):
             self.assertEqual(readers, {item["organizer"]})
         # задание, прогноз, итоги — и ничего больше; меню ролей не приходит
         self.assertTrue(all(len(h) == 3 for h in state["histories"].values()))
-        self.assertTrue(all("Список ролей" not in m["content"] for h in state["histories"].values()
+        self.assertTrue(all("The list of roles" not in m["content"] for h in state["histories"].values()
                             for m in h))
 
     def test_solo_spec_has_no_vote_and_judge(self):
@@ -354,7 +369,7 @@ class LlmChoiceTests(unittest.TestCase):
             return False
 
     def setUp(self):
-        directory = tempfile.TemporaryDirectory()
+        directory = temp_directory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
         shutil.copytree(PROJECT / "prompts", self.root / "prompts")
@@ -375,7 +390,7 @@ class LlmChoiceTests(unittest.TestCase):
         self.client.start()
         self.addCleanup(self.client.stop)
         self.profile = store.profile("deepseek")
-        self.messages = [{"role": "user", "content": "Кого назначить: A1 или A2? Ответь одной цифрой: 1 — A1, 2 — A2."}]
+        self.messages = [{"role": "user", "content": "Appoint A1 or A2? Answer with one digit: 1 — A1, 2 — A2."}]
 
     @staticmethod
     def logprob_response(token, top):
@@ -432,7 +447,7 @@ class LlmChoiceTests(unittest.TestCase):
 
 def synthetic_rounds(fixed):
     """Пять раундов: роли закреплены за агентами или уходят от них циклическим сдвигом."""
-    roles = {"A1": "моделист", "A2": "статистик", "A3": "сценарист", "A4": "критик", "A5": "историк"}
+    roles = {"A1": "modeler", "A2": "statistician", "A3": "scenarist", "A4": "critic", "A5": "historian"}
     rounds = []
     for index in range(5):
         organizer = f"A{index + 1}"
@@ -482,7 +497,7 @@ class AnalysisTests(unittest.TestCase):
     """Статистики анализа на синтетических прогонах без запросов к моделям."""
 
     def setUp(self):
-        directory = tempfile.TemporaryDirectory()
+        directory = temp_directory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
         shutil.copytree(PROJECT / "prompts", self.root / "prompts")
@@ -498,8 +513,11 @@ class AnalysisTests(unittest.TestCase):
         context.start()
         self.addCleanup(context.stop)
 
-    def write_run(self, ident, condition, votes, fixed=True, status="done", judgments=(), rounds=None, repeat=0):
-        data = {"spec": {"id": ident, "condition": condition, "repeat": repeat}, "status": status,
+    def write_run(self, ident, condition, votes, fixed=True, status="done", judgments=(), rounds=None, repeat=0,
+                  protocol="testbench", model="synthetic"):
+        data = {"spec": {"id": ident, "condition": condition, "repeat": repeat, "protocol": protocol,
+                         "profile": {"engine": "local", "model": model}, "role_order": ROLES},
+                "status": status,
                 "rounds": rounds if rounds is not None else synthetic_rounds(fixed),
                 "votes": votes, "judgments": list(judgments)}
         store.write_json(store.run_file("results", ident), data)
@@ -605,14 +623,27 @@ class AnalysisTests(unittest.TestCase):
         self.assertIn("2, ", markdown)           # ансамбль одиночек из двух прогонов
         self.assertNotIn("None", markdown)
 
+    def test_report_keeps_series_apart(self):
+        """Другая модель или другой протокол — отдельная серия, а не общая статистика."""
+        votes = {v: linear_ballots([a for a in run.names() if a != v]) for v in run.names()}
+        self.write_run("1" * 24, "open", votes, model="first")
+        self.write_run("2" * 24, "open", votes, model="second")
+        groups = analysis.by_series(analysis.runs())
+        self.assertEqual([len(subset) for _, subset in groups], [1, 1])
+        markdown = analysis.report()
+        self.assertIn("в сериях: 2", markdown)
+        self.assertEqual(markdown.count("Коллективный выигрыш (ΔQ)"), 2)  # своя секция на серию
+        self.assertIn("| first |", markdown)
+        self.assertIn("| second |", markdown)
+
 
 class ObserveTests(unittest.TestCase):
     def test_specialization_links_conventions(self):
         rounds = [
-            {"organizer": "A1", "assignments": {"A2": {"role": "статистик"}, "A3": {"role": "историк"},
-                                                 "A4": {"role": "критик"}, "A5": {"role": "календарь"}}},
-            {"organizer": "A2", "assignments": {"A1": {"role": "статистик"}, "A3": {"role": "историк"},
-                                                 "A4": {"role": "моделист"}, "A5": {"role": "календарь"}}},
+            {"organizer": "A1", "assignments": {"A2": {"role": "statistician"}, "A3": {"role": "historian"},
+                                                 "A4": {"role": "critic"}, "A5": {"role": "calendar"}}},
+            {"organizer": "A2", "assignments": {"A1": {"role": "statistician"}, "A3": {"role": "historian"},
+                                                 "A4": {"role": "modeler"}, "A5": {"role": "calendar"}}},
         ]
         self.assertEqual(observe.specialization(rounds)["A3"], 1.0)  # обе роли историка
         self.assertEqual(observe.specialization(rounds)["A4"], 0.5)  # критик и моделист
