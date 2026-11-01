@@ -1,9 +1,9 @@
-Раунд {round} из {rounds}. Этот прогноз делаешь ты один.
+Round {round} of {rounds}. You make this forecast alone.
 
-Значения P-индекса:
+P-index values:
 {series}
 
-Нужен прогноз на {horizon} недель: {labels}.
+A forecast is needed for {horizon} weeks: {labels}.
 
-Ответь только JSON без пояснений:
-{{"forecast": [{horizon} чисел по порядку недель]}}
+Answer only with JSON, no explanations:
+{{"forecast": [{horizon} numbers in week order]}}

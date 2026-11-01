@@ -1,8 +1,8 @@
 {
-  "историк": "По своим знаниям описывает, как обычно возникают, развиваются и затухают протестные волны.",
-  "календарь": "Оценивает календарные эффекты: праздники, отпуска, учебный год, типичные даты и поводы протестов.",
-  "моделист": "Предлагает простую модель динамики (затухание, самовозбуждение, возврат к фону) и подгоняет её к ряду.",
-  "статистик": "Описывает ряд количественно: уровень, разброс, всплески, тренд, связь соседних недель между собой.",
-  "сценарист": "Строит сценарии на горизонт прогноза (фон, всплеск, затухание) и оценивает вероятность каждого из них.",
-  "критик": "Проверяет гипотезу или предварительный прогноз, которые организатор передал в задании, и ищет слабые места."
+  "historian": "From its own knowledge describes how protest waves usually arise, develop and die down.",
+  "calendar": "Assesses calendar effects: holidays, vacations, the school year, typical dates and triggers of protests.",
+  "modeler": "Proposes a simple model of the dynamics (decay, self-excitation, reversion to the baseline) and fits it to the series.",
+  "statistician": "Describes the series quantitatively: level, spread, spikes, trend, and the relation between neighbouring weeks.",
+  "scenarist": "Builds scenarios for the forecast horizon (baseline, spike, decay) and estimates the probability of each.",
+  "critic": "Checks the hypothesis or the preliminary forecast that the organizer passed in the task and looks for weak points."
 }

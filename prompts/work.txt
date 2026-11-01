@@ -1,8 +1,8 @@
-Раунд {round} из {rounds}. Организатор {organizer} назначил тебе роль «{role}» и задание:
+Round {round} of {rounds}. Organizer {organizer} assigned you the role «{role}» and the task:
 
 «{task}»
 
-Значения P-индекса:
+P-index values:
 {series}
 
-Прогноз нужен на {labels}. Ответь организатору, не длиннее {words} слов. Твой ответ увидит только {organizer}.
+The forecast is needed for {labels}. Answer the organizer in no more than {words} words. Only {organizer} will see your answer.

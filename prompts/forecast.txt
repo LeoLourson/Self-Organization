@@ -1,6 +1,6 @@
-Ответы агентов:
+The agents' answers:
 
 {answers}
 
-Дай итоговый прогноз P-индекса на {labels}. Ответь только JSON без пояснений:
-{{"forecast": [{horizon} чисел по порядку недель]}}
+Give the final P-index forecast for {labels}. Answer only with JSON, no explanations:
+{{"forecast": [{horizon} numbers in week order]}}

@@ -1,11 +1,11 @@
-Доступные роли:
+Available roles:
 {roles}
 
-Организатор распределил роли так:
+The organizer distributed the roles as follows:
 {assignments}
 
-Ряд, который видел организатор:
+The series the organizer saw:
 {series}
 
-Нужен прогноз на {labels}. Оцени по шкале от 1 до 5, насколько удачно организатор распределил роли и сформулировал задания для этого прогноза (allocation). Ответь только JSON:
-{{"allocation": число, "comment": "одно предложение"}}
+A forecast is needed for {labels}. On a scale from 1 to 5, rate how well the organizer distributed the roles and phrased the tasks for this forecast (allocation). Answer only with JSON:
+{{"allocation": number, "comment": "one sentence"}}

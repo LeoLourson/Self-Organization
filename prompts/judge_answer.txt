@@ -1,11 +1,11 @@
-Роль участника: «{role}» — {role_description}
-Задание от организатора: «{task}»
+The participant's role: «{role}» — {role_description}
+Task from the organizer: «{task}»
 
-Ряд, который видел участник:
+The series the participant saw:
 {series}
 
-Ответ участника:
+The participant's answer:
 {answer}
 
-Оцени по шкале от 1 до 5, насколько ответ соответствует роли и заданию (role_fit) и насколько он полезен для прогноза на {labels} (usefulness). Ответь только JSON:
-{{"role_fit": число, "usefulness": число, "comment": "одно предложение"}}
+On a scale from 1 to 5, rate how well the answer matches the role and the task (role_fit) and how useful it is for the forecast for {labels} (usefulness). Answer only with JSON:
+{{"role_fit": number, "usefulness": number, "comment": "one sentence"}}

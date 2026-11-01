@@ -21,6 +21,15 @@ def endpoint(engine):
     return base_url, os.environ[engine["key_env"]]
 
 
+def timeout(engine):
+    """Предел ожидания одного ответа: движок может задать свой, по умолчанию 180 с.
+
+    Локальной модели без GPU мало 180 с: рассуждающая модель пишет больше тысячи токенов
+    на ответ, и запрос с длинной историей не укладывается в предел, обрывая прогон.
+    """
+    return engine.get("timeout", 180)
+
+
 def _cached(key, model, produce, logprob_id=None):
     """Ответ produce() с кэшем и общим лимитом; produce делает запрос и возвращает (ответ, расход, логиты)."""
     db = sqlite3.connect(store.ROOT / "requests.sqlite3", timeout=300)
@@ -84,7 +93,7 @@ def call(profile, scope, messages):
         # Общий предел длины ответа; профиль может задать свой: локальным моделям нужен меньший.
         settings.setdefault("max_tokens", api["max_tokens"])
         from openai import OpenAI
-        with OpenAI(api_key=api_key, base_url=base_url, timeout=180, max_retries=0) as client:
+        with OpenAI(api_key=api_key, base_url=base_url, timeout=timeout(engine), max_retries=0) as client:
             response = client.chat.completions.create(model=profile["model"], messages=messages, **settings)
         choice = response.choices[0]
         answer = (choice.message.content or "").strip()
@@ -157,7 +166,7 @@ def choice(profile, scope, messages, candidates):
         from openai import OpenAI
         settings = {k: v for k, v in profile["settings"].items()
                     if k not in ("max_tokens", "logprobs", "top_logprobs")}
-        with OpenAI(api_key=api_key, base_url=base_url, timeout=180, max_retries=0) as client:
+        with OpenAI(api_key=api_key, base_url=base_url, timeout=timeout(engine), max_retries=0) as client:
             response = client.chat.completions.create(model=profile["model"], messages=messages,
                                                       max_tokens=2, logprobs=True, top_logprobs=20,
                                                       **settings)

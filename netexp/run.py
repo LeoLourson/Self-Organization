@@ -175,7 +175,7 @@ def step_message(state, agent):
     if phase == "solo":
         return text("solo").format(**ctx)
     if phase == "assign":
-        example = ", ".join(f'"{a}": {{"role": "роль", "task": "задание"}}' for a in team)
+        example = ", ".join(f'"{a}": {{"role": "role", "task": "task"}}' for a in team)
         return text("assign").format(workers=", ".join(team), example=example,
                                      task_words=cfg["task_words"], **ctx)
     current = state["rounds"][state["round"]]
@@ -183,7 +183,7 @@ def step_message(state, agent):
         item = current["assignments"][agent]
         return text("work").format(organizer=boss, role=item["role"], task=item["task"],
                                    words=cfg["worker_words"], **ctx)
-    answers = "\n\n".join(f"{a} (роль «{current['assignments'][a]['role']}»):\n{current['answers'][a]}"
+    answers = "\n\n".join(f"{a} (role «{current['assignments'][a]['role']}»):\n{current['answers'][a]}"
                           for a in team)
     return text("forecast").format(answers=answers, **ctx)
 
@@ -232,7 +232,7 @@ def parse_json(answer):
         if value is None:
             raise ValueError(f"некорректный JSON ({error.msg})") from None
     if not isinstance(value, dict):
-        raise ValueError("нужен JSON-объект")
+        raise ValueError("a JSON object is required")
     return value
 
 
@@ -266,14 +266,15 @@ def accept(state, answer):
 def check_assignments(value, team):
     menu, limit = roles(), store.config()["task_words"]
     if not isinstance(value, dict) or sorted(value) != sorted(team):
-        raise ValueError(f"нужен объект assignments с записью для каждого из {', '.join(team)}")
+        raise ValueError(f"an assignments object with an entry for each of "
+                         f"{', '.join(team)} is required")
     for agent, item in value.items():
         if not isinstance(item, dict) or item.get("role") not in menu \
                 or not isinstance(item.get("task"), str) or not item["task"].strip():
             raise ValueError(f"у каждого агента нужны role из списка ({', '.join(menu)}) и непустой task")
         words = len(item["task"].split())
         if words > limit:
-            raise ValueError(f"задание для {agent} длиннее {limit} слов ({words}), сократи его")
+            raise ValueError(f"the task for {agent} is longer than {limit} words ({words}); shorten it")
     return {a: {"role": value[a]["role"], "task": value[a]["task"].strip()} for a in team}
 
 
@@ -282,7 +283,7 @@ def forecast_values(answer, horizon):
     forecast = parse_json(answer).get("forecast")
     if not isinstance(forecast, list) or len(forecast) != horizon \
             or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in forecast):
-        raise ValueError(f"нужен список forecast из {horizon} чисел")
+        raise ValueError(f"a forecast list of {horizon} numbers is required")
     return [float(x) for x in forecast]
 
 
@@ -296,10 +297,11 @@ def apply(state, agent, answer):
         state["phase"], state["step"] = "work", 0
     elif phase == "work":
         if not answer:
-            raise ValueError("пустой ответ")
+            raise ValueError("empty answer")
         words = len(answer.split())
         if words > store.config()["worker_words"]:
-            raise ValueError(f"ответ длиннее {store.config()['worker_words']} слов ({words}), сократи его")
+            raise ValueError(f"the answer is longer than {store.config()['worker_words']} words "
+                             f"({words}); shorten it")
         state["rounds"][state["round"]]["answers"][agent] = answer
         state["step"] += 1
         if state["step"] == len(workers(state)):
@@ -312,7 +314,7 @@ def apply(state, agent, answer):
         close_round(state, forecast_values(answer, horizon))
     elif phase == "debrief":
         if not answer:
-            raise ValueError("пустой ответ")
+            raise ValueError("empty answer")
         state["debriefs"][agent] = answer
         state["step"] += 1
         if state["step"] == len(names()):

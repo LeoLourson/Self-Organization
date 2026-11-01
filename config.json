@@ -8,7 +8,7 @@
   "data": "data/series.csv",
   "subagent_type": "net-agent",
   "vote_profile": "sonnet_api",
-  "judge_profile": "local_yandex",
+  "judge_profile": "deepseek",
   "api": {
     "max_tokens": 16000,
     "max_requests": 5000
@@ -26,7 +26,13 @@
       "base_url": "http://localhost:11434/v1",
       "base_url_env": "LOCAL_BASE_URL",
       "key_env": "LOCAL_API_KEY",
-      "key_optional": true
+      "key_optional": true,
+      "timeout": 600
+    },
+    "routerai": {
+      "base_url": "https://routerai.ru/api/v1",
+      "key_env": "ROUTERAI_API_KEY",
+      "timeout": 600
     }
   },
   "profiles": {
@@ -60,11 +66,30 @@
       "model": "qwen2.5:1.5b",
       "settings": {}
     },
+    "local_gemma": {
+      "transport": "api",
+      "engine": "local",
+      "model": "gemma4-4b",
+      "settings": {"temperature": 0.5, "max_tokens": 2000, "logprobs": true, "top_logprobs": 5}
+    },
     "local_yandex": {
       "transport": "api",
       "engine": "local",
       "model": "yandex-gpt-5-lite-8b",
       "settings": {"temperature": 0.5, "max_tokens": 2000, "logprobs": true, "top_logprobs": 5}
+    },
+    "api_gemma31": {
+      "transport": "api",
+      "engine": "routerai",
+      "model": "google/gemma-4-31b-it",
+      "settings": {"temperature": 0.5, "max_tokens": 2000, "logprobs": true, "top_logprobs": 5}
+    },
+    "api_gemma26": {
+      "transport": "api",
+      "engine": "routerai",
+      "model": "google/gemma-4-26b-a4b-it",
+      "settings": {"temperature": 0.5, "max_tokens": 2000, "logprobs": true, "top_logprobs": 5,
+                   "extra_body": {"provider": {"only": ["darkbloom", "nextbit", "coreweave", "parasail"]}}}
     }
   },
   "sandbox": {

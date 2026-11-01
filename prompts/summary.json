@@ -1,10 +1,10 @@
 {
-  "header": "Итоги раунда {round}. Организатор: {organizer}.",
-  "solo_header": "Итоги раунда {round}.",
-  "assignments": "Роли и задания:\n{assignments}",
-  "forecast": "Прогноз организатора:\n{forecast}",
-  "solo_forecast": "Твой прогноз:\n{forecast}",
-  "actual": "Реальные значения:\n{actual}",
+  "header": "Round {round} results. Organizer: {organizer}.",
+  "solo_header": "Round {round} results.",
+  "assignments": "Roles and tasks:\n{assignments}",
+  "forecast": "Organizer's forecast:\n{forecast}",
+  "solo_forecast": "Your forecast:\n{forecast}",
+  "actual": "Real values:\n{actual}",
   "conditions": {
     "open": ["assignments", "forecast"],
     "closed": ["forecast"],

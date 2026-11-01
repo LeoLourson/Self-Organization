@@ -1,11 +1,11 @@
-Раунд {round} из {rounds}. Организатор этого раунда — ты.
+Round {round} of {rounds}. You are the organizer of this round.
 
-Значения P-индекса:
+P-index values:
 {series}
 
-Нужен прогноз на {horizon} недель: {labels}.
+A forecast is needed for {horizon} weeks: {labels}.
 
-Назначь агентам {workers} по одной роли из списка и дай каждому конкретное задание в рамках роли — одно-два предложения, без перечня обязательных вычислений, не длиннее {task_words} слов. Каждый агент увидит свою роль, своё задание и тот же ряд и ответит только тебе. Затем ты получишь ответы и дашь итоговый прогноз.
+Assign each agent {workers} one role from the list and give each a specific task within the role — one or two sentences, no list of mandatory calculations, no longer than {task_words} words. Each agent will see its role, its task and the same series and will answer only you. Then you will receive the answers and give the final forecast.
 
-Ответь только JSON без пояснений:
+Answer only with JSON, no explanations:
 {{"assignments": {{{example}}}}}

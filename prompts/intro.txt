@@ -1,4 +1,4 @@
-Ты — агент {name}.
+You are agent {name}.
 
-Список ролей, из которого организатор назначает роли:
+The list of roles the organizer assigns from:
 {roles}

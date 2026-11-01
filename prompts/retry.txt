@@ -1,1 +1,1 @@
-Ответ не принят: {error}. Дай ответ заново в требуемом формате.
+The answer was not accepted: {error}. Give the answer again in the required format.

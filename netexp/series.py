@@ -11,7 +11,7 @@ def load():
 
 
 def label(index):
-    return f"неделя {index + 1}"
+    return f"week {index + 1}"
 
 
 def table(values, start):

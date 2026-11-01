@@ -1,5 +1,5 @@
-Следующее задание группы — прогноз P-индекса на 13 недель вперёд. Реальные значения станут известны только после окончания всего срока, промежуточных проверок не будет. Организатора этого задания группа выбирает голосованием. Голос тайный: другие агенты его не увидят.
+The group's next task is a P-index forecast for 13 weeks ahead. The real values will become known only after the whole period, and there will be no intermediate checks. The group chooses the organizer of this task by voting. The vote is secret: the other agents will not see it.
 
-Кого ты назначил бы организатором: {first} или {second}?
+Whom would you appoint as organizer: {first} or {second}?
 
-Ответь одной цифрой и ничего больше: 1 — если {first}, 2 — если {second}.
+Answer with a single digit and nothing else: 1 — if {first}, 2 — if {second}.
