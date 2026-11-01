@@ -1,0 +1,486 @@
+{
+  "id": "6bc32d459a63415099c9ea32",
+  "profile": "api_qwen38",
+  "ballots": [
+    {
+      "agent": "A1",
+      "pair": [
+        "A2",
+        "A3"
+      ],
+      "one": "A3",
+      "two": "A2",
+      "choice": 1,
+      "picked": "A3",
+      "reason": "A3's modeling approach in Round 4 better captured the mean-reversion dynamics, whereas A2's Round 5 forecast failed to account for the rebound volatility seen in the actual data.",
+      "logprob": {
+        "1": -0.575943112373352,
+        "2": -0.825943112373352
+      }
+    },
+    {
+      "agent": "A1",
+      "pair": [
+        "A2",
+        "A4"
+      ],
+      "one": "A4",
+      "two": "A2",
+      "choice": 1,
+      "picked": "A4",
+      "reason": "A4's scenario-based approach is better suited for long-horizon forecasting without intermediate feedback, allowing for flexible adaptation to multiple potential future states.",
+      "logprob": {
+        "1": -0.34844937920570374,
+        "2": -1.2234493494033813
+      }
+    },
+    {
+      "agent": "A1",
+      "pair": [
+        "A2",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A2",
+      "choice": 1,
+      "picked": "A5",
+      "reason": "A5's critical perspective on structural breaks is crucial for navigating the 13-week horizon without intermediate feedback, whereas A2's statistical focus proved too rigid against regime shifts.",
+      "logprob": {
+        "1": -0.2811528146266937,
+        "2": -1.4061528444290161
+      }
+    },
+    {
+      "agent": "A1",
+      "pair": [
+        "A3",
+        "A4"
+      ],
+      "one": "A4",
+      "two": "A3",
+      "choice": 2,
+      "picked": "A3",
+      "reason": "A3's quantitative modeling approach is better suited for a 13-week horizon where structural regime shifts require robust statistical fitting rather than short-term scenario probability.",
+      "logprob": {
+        "1": -0.6326019763946533,
+        "2": -0.7576019763946533
+      }
+    },
+    {
+      "agent": "A1",
+      "pair": [
+        "A3",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A3",
+      "choice": 1,
+      "picked": "A5",
+      "reason": "A5's critical perspective in Round 3 correctly identified the structural break to a higher baseline, whereas A3's rigid AR(1) model failed to capture the regime shift.",
+      "logprob": {
+        "1": -0.5231274366378784,
+        "2": -0.8981274366378784
+      }
+    },
+    {
+      "agent": "A1",
+      "pair": [
+        "A4",
+        "A5"
+      ],
+      "one": "A4",
+      "two": "A5",
+      "choice": 2,
+      "picked": "A5",
+      "reason": "A5's critical analysis in Round 4 correctly identified the structural break and high-plateau regime, showing superior ability to adapt to non-stationary dynamics for a longer horizon.",
+      "logprob": {
+        "1": -2.126929998397827,
+        "2": -0.12693004310131073
+      }
+    },
+    {
+      "agent": "A2",
+      "pair": [
+        "A1",
+        "A3"
+      ],
+      "one": "A3",
+      "two": "A1",
+      "choice": 2,
+      "picked": "A1",
+      "reason": "A1's statistical analysis in Round 4 correctly identified the shift to a higher volatility regime, making them better suited to manage the uncertainty of a 13-week forecast.",
+      "logprob": {
+        "1": -0.7576038241386414,
+        "2": -0.6326038241386414
+      }
+    },
+    {
+      "agent": "A2",
+      "pair": [
+        "A1",
+        "A4"
+      ],
+      "one": "A4",
+      "two": "A1",
+      "choice": 2,
+      "picked": "A1",
+      "reason": "A1's quantitative analysis of the volatility shift provided the most accurate diagnostic of the regime change, making them better suited to structure a long-horizon forecast.",
+      "logprob": {
+        "1": -1.5019304752349854,
+        "2": -0.25193044543266296
+      }
+    },
+    {
+      "agent": "A2",
+      "pair": [
+        "A1",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A1",
+      "choice": 1,
+      "picked": "A5",
+      "reason": "A5's scenario-based approach is better suited for long-horizon forecasting with high uncertainty, allowing for multiple potential trajectories rather than relying on short-term statistical reversion.",
+      "logprob": {
+        "1": -0.8259435296058655,
+        "2": -0.5759435296058655
+      }
+    },
+    {
+      "agent": "A2",
+      "pair": [
+        "A3",
+        "A4"
+      ],
+      "one": "A4",
+      "two": "A3",
+      "choice": 2,
+      "picked": "A3",
+      "reason": "A3's quantitative modeling approach is better suited for a 13-week horizon without intermediate feedback, allowing for systematic trend extrapolation rather than pattern matching.",
+      "logprob": {
+        "1": -1.0537053346633911,
+        "2": -0.4287053048610687
+      }
+    },
+    {
+      "agent": "A2",
+      "pair": [
+        "A3",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A3",
+      "choice": 1,
+      "picked": "A5",
+      "reason": "A5's scenario-based approach is better suited for the 13-week horizon, allowing for multiple potential protest cycles rather than a single short-term model.",
+      "logprob": {
+        "1": -0.5759432315826416,
+        "2": -0.8259432315826416
+      }
+    },
+    {
+      "agent": "A2",
+      "pair": [
+        "A4",
+        "A5"
+      ],
+      "one": "A4",
+      "two": "A5",
+      "choice": 2,
+      "picked": "A5",
+      "reason": "A5's scenario-based approach is better suited for a 13-week horizon where uncertainty is high and multiple distinct outcomes must be weighted.",
+      "logprob": {
+        "1": -2.0176780223846436,
+        "2": -0.14267797768115997
+      }
+    },
+    {
+      "agent": "A3",
+      "pair": [
+        "A1",
+        "A2"
+      ],
+      "one": "A2",
+      "two": "A1",
+      "choice": 1,
+      "picked": "A2",
+      "reason": "A2 demonstrated better adaptability to the series' erratic spikes and oscillations in the final round, whereas A1's models consistently underestimated volatility and structural breaks.",
+      "logprob": {
+        "1": -0.9740782976150513,
+        "2": -0.47407832741737366
+      }
+    },
+    {
+      "agent": "A3",
+      "pair": [
+        "A1",
+        "A4"
+      ],
+      "one": "A4",
+      "two": "A1",
+      "choice": 2,
+      "picked": "A1",
+      "reason": "A1's statistical focus on volatility and decay patterns is better suited to managing the uncertainty of a long horizon without intermediate feedback.",
+      "logprob": {
+        "1": -0.6931501626968384,
+        "2": -0.6931501626968384
+      }
+    },
+    {
+      "agent": "A3",
+      "pair": [
+        "A1",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A1",
+      "choice": 1,
+      "picked": "A5",
+      "reason": "A5 demonstrated superior ability to identify structural breaks and cycle shifts in Round 3, which is critical for navigating the uncertainty of a 13-week horizon without feedback.",
+      "logprob": {
+        "1": -0.6931490898132324,
+        "2": -0.6931490898132324
+      }
+    },
+    {
+      "agent": "A3",
+      "pair": [
+        "A2",
+        "A4"
+      ],
+      "one": "A4",
+      "two": "A2",
+      "choice": 1,
+      "picked": "A4",
+      "reason": "A4 demonstrated superior ability to integrate qualitative insights and scenario planning, which is essential for handling the high volatility and lack of intermediate feedback in a 13-week horizon.",
+      "logprob": {
+        "1": -0.47407853603363037,
+        "2": -0.9740785360336304
+      }
+    },
+    {
+      "agent": "A3",
+      "pair": [
+        "A2",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A2",
+      "choice": 1,
+      "picked": "A5",
+      "reason": "A5 demonstrated superior pattern recognition in Round 3, correctly identifying the oscillating cycle that A2's static models failed to capture.",
+      "logprob": {
+        "1": -0.3868725597858429,
+        "2": -1.1368725299835205
+      }
+    },
+    {
+      "agent": "A3",
+      "pair": [
+        "A4",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A4",
+      "choice": 2,
+      "picked": "A4",
+      "reason": "A4's Round 2 forecast was closest to actuals, demonstrating better intuition for the series' volatile, non-linear dynamics compared to A5's smoother, less accurate predictions.",
+      "logprob": {
+        "1": -0.898125410079956,
+        "2": -0.523125410079956
+      }
+    },
+    {
+      "agent": "A4",
+      "pair": [
+        "A1",
+        "A2"
+      ],
+      "one": "A2",
+      "two": "A1",
+      "choice": 1,
+      "picked": "A2",
+      "reason": "A2's historical role provided better context for the long-term dynamics and decay phases relevant to a 13-week horizon.",
+      "logprob": {
+        "1": -1.1368744373321533,
+        "2": -0.38687440752983093
+      }
+    },
+    {
+      "agent": "A4",
+      "pair": [
+        "A1",
+        "A3"
+      ],
+      "one": "A3",
+      "two": "A1",
+      "choice": 2,
+      "picked": "A1",
+      "reason": "A1's quantitative focus on volatility and mean-reversion is better suited for managing the uncertainty of a 13-week horizon without intermediate feedback.",
+      "logprob": {
+        "1": -0.9740806818008423,
+        "2": -0.4740806818008423
+      }
+    },
+    {
+      "agent": "A4",
+      "pair": [
+        "A1",
+        "A5"
+      ],
+      "one": "A1",
+      "two": "A5",
+      "choice": 1,
+      "picked": "A1",
+      "reason": "A1's statistical focus on volatility and mean-reversion is better suited for managing the higher uncertainty and potential spikes in a 13-week horizon without intermediate feedback.",
+      "logprob": {
+        "1": -0.5759416222572327,
+        "2": -0.8259416222572327
+      }
+    },
+    {
+      "agent": "A4",
+      "pair": [
+        "A2",
+        "A3"
+      ],
+      "one": "A2",
+      "two": "A3",
+      "choice": 2,
+      "picked": "A3",
+      "reason": "A3's critical review in Round 2 correctly identified the need to account for high-frequency oscillation and avoid linear smoothing, a key insight for long-horizon forecasting.",
+      "logprob": {
+        "1": -1.804748773574829,
+        "2": -0.17974872887134552
+      }
+    },
+    {
+      "agent": "A4",
+      "pair": [
+        "A2",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A2",
+      "choice": 1,
+      "picked": "A5",
+      "reason": "A5 demonstrated superior scenario weighting in Round 3, accurately capturing the oscillation dynamics that A2's linear decay forecast failed to address.",
+      "logprob": {
+        "1": -0.5759417414665222,
+        "2": -0.8259417414665222
+      }
+    },
+    {
+      "agent": "A4",
+      "pair": [
+        "A3",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A3",
+      "choice": 2,
+      "picked": "A3",
+      "reason": "A3's critical analysis in Round 2 correctly identified the sawtooth pattern and volatility, providing a more robust framework for handling long-term uncertainty than A5's scenario approach.",
+      "logprob": {
+        "1": -0.7576041221618652,
+        "2": -0.6326041221618652
+      }
+    },
+    {
+      "agent": "A5",
+      "pair": [
+        "A1",
+        "A2"
+      ],
+      "one": "A1",
+      "two": "A2",
+      "choice": 2,
+      "picked": "A2",
+      "reason": "A2's scenario-based approach in Round 5 better captured the high volatility and structural shifts than A1's linear decay model.",
+      "logprob": {
+        "1": -0.7576013803482056,
+        "2": -0.6326013803482056
+      }
+    },
+    {
+      "agent": "A5",
+      "pair": [
+        "A1",
+        "A3"
+      ],
+      "one": "A3",
+      "two": "A1",
+      "choice": 1,
+      "picked": "A3",
+      "reason": "A3's critical review in Round 1 effectively identified the cyclical nature of fluctuations, demonstrating superior pattern recognition essential for a long, unverified forecast horizon.",
+      "logprob": {
+        "1": -1.2234469652175903,
+        "2": -0.34844693541526794
+      }
+    },
+    {
+      "agent": "A5",
+      "pair": [
+        "A1",
+        "A4"
+      ],
+      "one": "A4",
+      "two": "A1",
+      "choice": 2,
+      "picked": "A1",
+      "reason": "A1's statistical rigor in Round 4 correctly identified the structural break, whereas A4's scenario probabilities in Round 5 failed to account for the sustained high volatility.",
+      "logprob": {
+        "1": -0.8981257677078247,
+        "2": -0.5231257677078247
+      }
+    },
+    {
+      "agent": "A5",
+      "pair": [
+        "A2",
+        "A3"
+      ],
+      "one": "A2",
+      "two": "A3",
+      "choice": 1,
+      "picked": "A2",
+      "reason": "A2 demonstrated superior scenario weighting in Round 5, correctly identifying the high-volatility regime despite the organizer's conservative bias.",
+      "logprob": {
+        "1": -1.6004161834716797,
+        "2": -0.2254161536693573
+      }
+    },
+    {
+      "agent": "A5",
+      "pair": [
+        "A2",
+        "A4"
+      ],
+      "one": "A4",
+      "two": "A2",
+      "choice": 1,
+      "picked": "A4",
+      "reason": "A4 demonstrated superior scenario weighting in Round 2, producing the most accurate forecast, whereas A2's final round forecast significantly underestimated the sustained high volatility.",
+      "logprob": {
+        "1": -0.42870399355888367,
+        "2": -1.053704023361206
+      }
+    },
+    {
+      "agent": "A5",
+      "pair": [
+        "A3",
+        "A4"
+      ],
+      "one": "A4",
+      "two": "A3",
+      "choice": 2,
+      "picked": "A3",
+      "reason": "A3's earlier critical insight regarding cyclical fluctuations proved more valuable than A4's scenario weighting, which underestimated the recent volatility shift.",
+      "logprob": {
+        "1": -0.6931501626968384,
+        "2": -0.6931501626968384
+      }
+    }
+  ]
+}

@@ -7,6 +7,7 @@
   plan    --profile P [--conditions ...] --repeats N   перечислить прогоны порции
   analyze [--save]                                 сводка и статистики по всем прогонам
   check-vote --profile P                           проверить логпробы эндпоинта одним вопросом
+  revote   --id ID [--id ID ...] [--pairs N] [--fresh]  заново проголосовать по парам с причиной
   agent-file                                       записать .claude/agents/<subagent_type>.md
   sandbox on|off|status                            убрать или вернуть инструкции Claude Code
 """
@@ -16,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-from netexp import analysis, run, sandbox, store
+from netexp import analysis, revote, run, sandbox, store
 
 
 def plan(profile, conditions, repeats):
@@ -52,6 +53,14 @@ def main():
     p = commands.add_parser("check-vote")
     p.add_argument("--profile", required=True)
 
+    p = commands.add_parser("revote")
+    p.add_argument("--id", action="append", required=True, help="ID прогона; можно указать несколько")
+    p.add_argument("--pairs", type=int, help="только первые N пар на прогон — для пробы")
+    p.add_argument("--fresh", action="store_true", help="забыть собранные голоса и пройти заново")
+
+    p = commands.add_parser("revote-report")
+    p.add_argument("--save", action="store_true", help="записать отчёт в reports/ вместо вывода на экран")
+
     for name in ("advance", "status", "submit"):
         p = commands.add_parser(name)
         p.add_argument("--id", required=True)
@@ -78,6 +87,18 @@ def main():
         result = run.start(**args)
     elif command == "check-vote":
         result = run.check_vote(args["profile"])
+    elif command == "revote":
+        result = [revote.collect(ident, limit=args["pairs"], fresh=args["fresh"]) for ident in args["id"]]
+    elif command == "revote-report":
+        markdown = revote.report()
+        if args["save"]:
+            path = store.ROOT / "reports" / f"vote-reasons-{datetime.date.today().isoformat()}.md"
+            path.parent.mkdir(exist_ok=True)
+            path.write_text(markdown, encoding="utf-8")
+            result = {"report": store.relative(path)}
+        else:
+            print(markdown)
+            return
     elif command == "plan":
         result = plan(**args)
     elif command == "submit":

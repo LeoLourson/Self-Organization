@@ -52,11 +52,17 @@ PROTOCOL_FIELDS = ("agents", "horizon", "history_weeks", "first_origin", "worker
 
 
 def protocol_digest():
-    """Хеш всего, что видят агенты: тексты, данные, длины. Профили моделей сюда не входят."""
+    """Хеш всего, что видят агенты: тексты, данные, длины. Профили моделей сюда не входят.
+
+    Переводы строк приводятся к LF: при core.autocrlf=true git переписывает файлы
+    переводом строк при каждом checkout, агенты же видят одни и те же токены.
+    Без этого хеш менялся от checkout к checkout, и начатый прогон нельзя было
+    продолжить («Протокол изменён»), хотя протокол тот же.
+    """
     cfg = config()
     files = [*sorted((ROOT / "prompts").glob("*.txt")), ROOT / "prompts/summary.json", ROOT / "prompts/roles.json", ROOT / cfg["data"]]
     fields = json.dumps([cfg[name] for name in PROTOCOL_FIELDS] + [cfg["api"]["max_tokens"]]).encode()
-    return hashlib.sha256(b"".join(p.read_bytes() for p in files) + fields).hexdigest()[:12]
+    return hashlib.sha256(b"".join(p.read_bytes().replace(b"\r\n", b"\n") for p in files) + fields).hexdigest()[:12]
 
 
 def run_file(kind, ident):

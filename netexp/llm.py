@@ -8,9 +8,18 @@ import hashlib
 import json
 import math
 import os
+import re
 import sqlite3
 
 from . import store
+
+BALLOT_SCHEMA = {
+    "type": "object",
+    "properties": {"choice": {"type": "integer", "enum": [1, 2]},
+                   "reason": {"type": "string"}},
+    "required": ["choice", "reason"],
+    "additionalProperties": False,
+}
 
 
 def endpoint(engine):
@@ -115,6 +124,70 @@ def cached_logprobs(scope):
         return json.loads(row[0]) if row else None
     finally:
         db.close()
+
+
+def choice_logprobs(choice, candidates=("1", "2")):
+    """Логпробы значения поля choice в JSON-ответе: {кандидат: логпроб или None}.
+
+    Цифра выбора стоит не первым токеном, поэтому её позиция ищется по тексту,
+    собранному из токенов: от токена, накрывающего этот символ, берутся его
+    топ-логпробы. None — сервер логиты не отдал или вариант не попал в топ.
+    """
+    content = getattr(getattr(choice, "logprobs", None), "content", None)
+    if not content:
+        return {candidate: None for candidate in candidates}
+    text, spans = "", []
+    for item in content:
+        token = item.token or ""
+        spans.append((len(text), len(text) + len(token), item))
+        text += token
+    match = re.search(r'"choice"\s*:\s*"?(\d)"?', text)
+    entry = next((item for start, end, item in spans if start <= match.start(1) < end), None) if match else None
+    if entry is None:
+        return {candidate: None for candidate in candidates}
+    tokens = [(item.token or "", float(item.logprob)) for item in (entry.top_logprobs or [])]
+    if all(token != entry.token for token, _ in tokens):
+        tokens.append((entry.token or "", float(entry.logprob)))
+    values = {}
+    for candidate in candidates:
+        matched = [logprob for token, logprob in tokens if token.strip().strip('"') == candidate]
+        values[candidate] = _logsumexp(matched) if matched else None
+    return values
+
+
+def ballot(profile, scope, messages):
+    """Голос структурированным ответом: выбор и причина одним JSON, логпробы цифр — если их дают.
+
+    Строгая схема json_schema требует поля choice (1 или 2) и reason; провайдер,
+    который её отвергает, получает json_object с тем же требованием, уже записанным
+    в сообщении. Логпробы запрашиваются вместе с ответом, поэтому перевес остаётся
+    измеримым, а причина — читаемой. Как call и choice, повтор берётся из кэша.
+    """
+    store.check_stop()
+    engine = store.config()["engines"][profile["engine"]]
+    key = hashlib.sha256(json.dumps(["ballot", scope, profile["engine"], profile["model"], profile["settings"],
+                                     messages], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+    def produce():
+        base_url, api_key = endpoint(engine)
+        settings = {k: v for k, v in profile["settings"].items()
+                    if k not in ("max_tokens", "logprobs", "top_logprobs")}
+        from openai import BadRequestError, OpenAI, UnprocessableEntityError
+        with OpenAI(api_key=api_key, base_url=base_url, timeout=timeout(engine), max_retries=0) as client:
+            request = {"model": profile["model"], "messages": messages,
+                       "logprobs": True, "top_logprobs": 20, **settings}
+            try:
+                response = client.chat.completions.create(**request, response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": "organizer_vote", "strict": True, "schema": BALLOT_SCHEMA}})
+            except (BadRequestError, UnprocessableEntityError):
+                response = client.chat.completions.create(**request, response_format={"type": "json_object"})
+        choice = response.choices[0]
+        content = (choice.message.content or "").strip()
+        return json.dumps({"content": content, "logprob": choice_logprobs(choice)}, ensure_ascii=False), \
+            response.usage.model_dump() if response.usage else {}, None
+
+    return json.loads(_cached(key, profile["model"], produce))
 
 
 def _logsumexp(values):

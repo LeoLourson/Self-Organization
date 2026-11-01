@@ -10,7 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from netexp import analysis, llm, observe, run, sandbox, store
+from netexp import analysis, llm, observe, revote, run, sandbox, store
 
 PROJECT = store.ROOT
 ROLES = list(store.read_json(PROJECT / "prompts/roles.json"))
@@ -349,6 +349,39 @@ class RunTests(unittest.TestCase):
         self.assertEqual(settings["enabledPlugins"], {"p@m": True})
 
 
+class ProtocolTests(unittest.TestCase):
+    """Хеш протокола не зависит от того, с какими переводами строк файлы лежат на диске."""
+
+    def setUp(self):
+        directory = temp_directory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        shutil.copytree(PROJECT / "prompts", self.root / "prompts")
+        cfg = store.read_json(PROJECT / "config.json")
+        cfg["data"] = "data/series.csv"
+        (self.root / "data").mkdir()
+        (self.root / "data/series.csv").write_text("week,value\n0,1\n", encoding="utf-8")
+        (self.root / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+        context = patch.object(store, "ROOT", self.root)
+        context.start()
+        self.addCleanup(context.stop)
+
+    def test_line_endings_do_not_change_digest(self):
+        """core.autocrlf переписывает файлы при checkout; текст для агентов тот же."""
+        digest = store.protocol_digest()
+        for path in [*self.root.glob("prompts/*.txt"), self.root / "prompts/summary.json",
+                     self.root / "prompts/roles.json", self.root / "data/series.csv"]:
+            path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+        self.assertEqual(store.protocol_digest(), digest)
+
+    def test_text_change_does_change_digest(self):
+        """Нормализация не должна скрывать настоящую правку протокола."""
+        digest = store.protocol_digest()
+        prompt = self.root / "prompts/pair.txt"
+        prompt.write_bytes(prompt.read_bytes() + b"\nOne more line.")
+        self.assertNotEqual(store.protocol_digest(), digest)
+
+
 class LlmChoiceTests(unittest.TestCase):
     """Разбор логпробов ответа: llm.choice без сети, с фальшивым OpenAI-клиентом."""
 
@@ -443,6 +476,126 @@ class LlmChoiceTests(unittest.TestCase):
         LlmChoiceTests.FakeOpenAI.responses = [self.logprob_response("2", [("1", -1.0), ("2", -0.3)])]
         values = llm.choice(self.profile, "s3", self.messages, ("1", "2"))
         self.assertEqual(values["2"], -0.3)
+
+    @staticmethod
+    def ballot_response(content, tokens):
+        """Ответ с JSON-текстом и токенами: (токен, логпроб, топ-логпробы)."""
+        entry = [SimpleNamespace(token=token, logprob=logprob,
+                                 top_logprobs=[SimpleNamespace(token=t, logprob=v) for t, v in top])
+                 for token, logprob, top in tokens]
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content),
+                                                        logprobs=SimpleNamespace(content=entry))],
+                               usage=None)
+
+    def test_ballot_keeps_reason_and_choice_margin(self):
+        """Цифра выбора стоит не первым токеном: логпроб берётся с позиции поля choice."""
+        content = '{"choice": 2, "reason": "A2 kept the forecast close to the series"}'
+        tokens = [('{"choice": ', -0.0, []),
+                  ("2", -0.3, [("1", -1.4), ("2", -0.3)]),
+                  (', "reason": "A2 kept the forecast close to the series"}', 0.0, [])]
+        LlmChoiceTests.FakeOpenAI.responses = [self.ballot_response(content, tokens)]
+        value = llm.ballot(self.profile, "b1", self.messages)
+        self.assertEqual(value["content"], content)
+        self.assertAlmostEqual(value["logprob"]["2"], -0.3)
+        self.assertAlmostEqual(value["logprob"]["1"], -1.4)
+        kwargs = LlmChoiceTests.FakeOpenAI.calls[0]
+        self.assertEqual(kwargs["response_format"]["json_schema"]["strict"], True)
+        self.assertTrue(kwargs["logprobs"])
+
+    def test_ballot_without_logprobs_keeps_choice(self):
+        """Сервер может не отдать логиты вместе со структурированным ответом: выбор и причина остаются."""
+        content = '{"choice": 1, "reason": "x"}'
+        LlmChoiceTests.FakeOpenAI.responses = [SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content), logprobs=None)], usage=None)]
+        value = llm.ballot(self.profile, "b2", self.messages)
+        self.assertEqual(value["content"], content)
+        self.assertEqual(value["logprob"], {"1": None, "2": None})
+
+
+class RevoteTests(unittest.TestCase):
+    """Повторное голосование спрашивает то же, что и прогон, но требует причину."""
+
+    def test_question_keeps_pair_text_and_number_mapping(self):
+        paragraphs = (store.ROOT / "prompts/pair.txt").read_text(encoding="utf-8").strip().split("\n\n")
+        prompt = revote.question("A2", "A4")
+        self.assertTrue(prompt.startswith(paragraphs[0]))
+        self.assertIn(paragraphs[1].format(first="A2", second="A4"), prompt)
+        self.assertIn("1 if A2", prompt)
+        self.assertIn("2 if A4", prompt)
+        self.assertNotIn("single digit", prompt)
+        self.assertIn('"reason"', prompt)
+
+    def test_parse_rejects_missing_choice_or_reason(self):
+        with self.assertRaises(ValueError):
+            revote.parse({"content": '{"reason": "x"}', "logprob": {}})
+        with self.assertRaises(ValueError):
+            revote.parse({"content": '{"choice": 3, "reason": "x"}', "logprob": {}})
+        with self.assertRaises(ValueError):
+            revote.parse({"content": '{"choice": 1, "reason": " "}', "logprob": {}})
+        self.assertEqual(revote.parse({"content": '{"choice": 2, "reason": "x"}', "logprob": {}}),
+                         {"choice": 2, "reason": "x"})
+
+    def test_parse_accepts_digit_in_quotes(self):
+        """Цифра в кавычках — тот же выбор: смысл однозначен, повтор запроса не нужен."""
+        self.assertEqual(revote.parse({"content": '{"choice": "1", "reason": "x"}', "logprob": {}})["choice"], 1)
+
+    def test_clarified_question_names_both_agents(self):
+        """Уточнение на повторе: в паре ровно двое, другого ответа нет — лечит «выбор 3»."""
+        plain = revote.question("A1", "A3")
+        clarified = revote.question("A1", "A3", clarified=True)
+        self.assertTrue(clarified.startswith(plain))
+        self.assertIn("exactly two agents: A1 and A3", clarified)
+        self.assertIn("Answer 1 to make A1", clarified)
+        self.assertIn("2 to make A3 the organizer", clarified)
+
+    def test_flipped_counts_reversed_preference(self):
+        """Знак прежнего перевеса против нового выбора: смена предпочтения — перевёрнутая пара."""
+        old = {"A1": [{"pair": ["A2", "A3"], "one": "A2", "logprob": {"A2": -0.9, "A3": -0.6}}]}
+        reversed_ballot = {"agent": "A1", "pair": ["A2", "A3"], "one": "A2", "two": "A3", "choice": 1,
+                           "picked": "A2", "reason": "x", "logprob": {"1": -0.3, "2": -1.4}}
+        self.assertEqual(revote.flipped(old, {"A1": [reversed_ballot]}), (1, 1))
+        kept_ballot = {"agent": "A1", "pair": ["A2", "A3"], "one": "A2", "two": "A3", "choice": 2,
+                       "picked": "A3", "reason": "x", "logprob": {"1": -1.4, "2": -0.3}}
+        self.assertEqual(revote.flipped(old, {"A1": [kept_ballot]}), (0, 1))
+
+    def test_flipped_needs_both_margins(self):
+        """Прежние голоса-ранжирование без перевесов сравнивать не с чем — и пары не считаются."""
+        self.assertFalse(revote.logprob_votes({"A1": [2, 3, 4, 5]}))
+        self.assertTrue(revote.logprob_votes(
+            {"A1": [{"pair": ["A2", "A3"], "one": "A2", "logprob": {"A2": -0.9, "A3": -0.6}}]}))
+
+    def test_count_word_agrees_with_number(self):
+        self.assertEqual(revote.count_word(1, "голос", "голоса", "голосов"), "1 голос")
+        self.assertEqual(revote.count_word(3, "голос", "голоса", "голосов"), "3 голоса")
+        self.assertEqual(revote.count_word(11, "голос", "голоса", "голосов"), "11 голосов")
+        self.assertEqual(revote.count_word(21, "голос", "голоса", "голосов"), "21 голос")
+        self.assertEqual(revote.count_word(30, "голос", "голоса", "голосов"), "30 голосов")
+
+    def test_agree_block_counts_picks_with_margins(self):
+        """Выбор сверяется с перевесами цифр: ответ без перевесов не считается, расхождение видно."""
+        ballots = [
+            {"agent": "A1", "pair": ["A2", "A3"], "one": "A2", "two": "A3", "choice": 1, "picked": "A2",
+             "reason": "x", "logprob": {"1": -0.3, "2": -1.4}},
+            {"agent": "A2", "pair": ["A1", "A3"], "one": "A3", "two": "A1", "choice": 1, "picked": "A3",
+             "reason": "y", "logprob": {"1": -2.0, "2": -0.1}},
+            {"agent": "A3", "pair": ["A1", "A2"], "one": "A1", "two": "A2", "choice": 1, "picked": "A1",
+             "reason": "z", "logprob": {"1": None, "2": None}},
+        ]
+        text = "\n".join(revote.agree_block(ballots))
+        self.assertIn("Из 3 ответов перевесы цифр вернулись в 2", text)
+        self.assertIn("совпала с более вероятной в 1 из 2", text)
+        self.assertIn("50 %", text)
+
+    def test_run_block_marks_ranking_votes_without_margins(self):
+        """У прогона с ранжированием нет перевесов: в отчёте прочерк, а не нули."""
+        state = {"spec": {"id": "abc12345", "condition": "open", "repeat": 0}, "votes": {"A1": [2, 3, 4, 5]}}
+        ballots = [{"agent": "A1", "pair": ["A2", "A3"], "one": "A2", "two": "A3", "choice": 1,
+                    "picked": "A2", "reason": "x", "logprob": {"1": -0.3, "2": -1.4}}]
+        text = "\n".join(revote.run_block(state, ballots))
+        self.assertIn("Прогон abc12345", text)
+        self.assertIn("Собрано 1 голос из 30", text)
+        self.assertIn("| — | — |", text)
+        self.assertIn("сравнивать порядок не с чем", text)
 
 
 def synthetic_rounds(fixed):
