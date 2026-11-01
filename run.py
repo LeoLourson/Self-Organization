@@ -8,6 +8,7 @@
   analyze [--save]                                 сводка и статистики по всем прогонам
   check-vote --profile P                           проверить логпробы эндпоинта одним вопросом
   revote   --id ID [--id ID ...] [--pairs N] [--fresh]  заново проголосовать по парам с причиной
+  vote-probe --id ID --agent A1 [--repeats N]      повторить голос агента по парам: цифрой и JSON
   agent-file                                       записать .claude/agents/<subagent_type>.md
   sandbox on|off|status                            убрать или вернуть инструкции Claude Code
 """
@@ -61,6 +62,11 @@ def main():
     p = commands.add_parser("revote-report")
     p.add_argument("--save", action="store_true", help="записать отчёт в reports/ вместо вывода на экран")
 
+    p = commands.add_parser("vote-probe")
+    p.add_argument("--id", required=True, help="ID прогона")
+    p.add_argument("--agent", required=True, help="агент, чьи голоса повторяются")
+    p.add_argument("--repeats", type=int, default=revote.PROBE_REPEATS, help="вызовов на пару")
+
     for name in ("advance", "status", "submit"):
         p = commands.add_parser(name)
         p.add_argument("--id", required=True)
@@ -99,6 +105,11 @@ def main():
         else:
             print(markdown)
             return
+    elif command == "vote-probe":
+        record = revote.probe(args["id"], args["agent"], args["repeats"])
+        state = store.read_json(store.run_file("state", args["id"]))
+        print("\n".join(revote.probe_block(state, record)))
+        return
     elif command == "plan":
         result = plan(**args)
     elif command == "submit":

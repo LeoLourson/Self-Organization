@@ -1,0 +1,229 @@
+{
+  "id": "179eaddfe08493d134e69f53",
+  "agent": "A1",
+  "repeats": 5,
+  "cells": [
+    {
+      "pair": [
+        "A2",
+        "A3"
+      ],
+      "one": "A2",
+      "two": "A3",
+      "old_margin": -0.3,
+      "digits": [
+        -0.3,
+        -0.3,
+        -0.3,
+        -0.3,
+        2.62
+      ],
+      "picks": [
+        "A3",
+        "A2",
+        "A3",
+        "A3",
+        "A3"
+      ],
+      "margins": [
+        -0.67,
+        -0.73,
+        0.0,
+        -0.63,
+        0.63
+      ],
+      "reasons": [
+        "A3's role as historian provides essential context for long-term protest waves, which is crucial for a long-term 13-week forecast compared to A2's focus on short-term statistics.",
+        "A2's statistical approach is better suited for long-term forecasting, as it provides the quantitative grounding necessary to anchor the group's multi-week projections.",
+        "A3's role as historian provides essential context for long-term trends, which is critical for a 13-week forecast compared to A2's focus on short-term statistics.",
+        "A3's role as historian and scenarist provides better context for long-term structural shifts required for a 13-week forecast compared to A2's statistical focus.",
+        "A3's historical perspective is crucial for a long-term 13-week forecast to identify potential protest cycles and structural shifts."
+      ]
+    },
+    {
+      "pair": [
+        "A2",
+        "A4"
+      ],
+      "one": "A4",
+      "two": "A2",
+      "old_margin": 2.42,
+      "digits": [
+        1.87,
+        3.63,
+        2.62,
+        3.87,
+        1.37
+      ],
+      "picks": [
+        "A4",
+        "A4",
+        "A4",
+        "A4",
+        "A4"
+      ],
+      "margins": [
+        4.87,
+        5.5,
+        5.5,
+        5.63,
+        5.25
+      ],
+      "reasons": [
+        "A4's modeling approach is better suited for a long-term 13-week forecast, as it can account for complex dynamics like self-excitation and decay over an extended horizon.",
+        "A4's modeling approach is better suited for long-term forecasting where capturing complex dynamics and non-linear transitions is more critical than simple statistical summaries.",
+        "A4's modeling approach is better suited for a long-term 13-week forecast, as it can better capture the complex, non-linear dynamics and potential regime shifts over an extended horizon.",
+        "A4's modeling approach is better suited for a long-term 13-week forecast, as it can better capture complex dynamics and structural shifts than simple statistical descriptions.",
+        "A4's modeling approach is better suited for a long-term 13-week forecast where capturing complex dynamics and non-linear transitions is more critical than simple statistical summaries."
+      ]
+    },
+    {
+      "pair": [
+        "A2",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A2",
+      "old_margin": 1.21,
+      "digits": [
+        3.87,
+        3.37,
+        5.25,
+        3.87,
+        3.0
+      ],
+      "picks": [
+        "A5",
+        "A5",
+        "A5",
+        "A5",
+        "A5"
+      ],
+      "margins": [
+        8.25,
+        8.0,
+        7.87,
+        8.75,
+        7.38
+      ],
+      "reasons": [
+        "A5's critical approach is essential for a long-term forecast to avoid the group's tendency to underestimate volatility and sudden regime shifts.",
+        "A5's role as a critic is crucial for a long-term 13-week forecast to challenge biases and prevent the group from settling on overly simplistic or stable models.",
+        "A5's role as a critic is crucial for a long-term forecast to prevent groupthink and ensure the team accounts for high-impact, low-probability events.",
+        "A5's critical perspective is essential for a long-term forecast to prevent groupthink and ensure potential high-magnitude volatility is not underestimated.",
+        "A5's critical perspective is essential for a long-term forecast to prevent groupthink and ensure that sudden, high-magnitude volatility is not systematically underestimated."
+      ]
+    },
+    {
+      "pair": [
+        "A3",
+        "A4"
+      ],
+      "one": "A4",
+      "two": "A3",
+      "old_margin": 1.6,
+      "digits": [
+        8.13,
+        6.5,
+        6.87,
+        8.25,
+        7.62
+      ],
+      "picks": [
+        "A4",
+        "A4",
+        "A4",
+        "A4",
+        "A4"
+      ],
+      "margins": [
+        8.62,
+        8.5,
+        8.75,
+        8.0,
+        8.25
+      ],
+      "reasons": [
+        "A4's modeling approach is better suited for a long-term 13-week horizon where capturing complex dynamics and variance is more critical than historical narrative.",
+        "A4's modeling approach is better suited for long-term forecasting of complex, non-linear dynamics over a 13-week horizon.",
+        "A4's modeling approach is better suited for a long-term 13-week forecast where capturing complex dynamics and volatility is more critical than historical qualitative analysis.",
+        "A4's modeling approach is better suited for a long-term 13-week forecast, as it can better capture complex dynamics and non-linear shifts than a purely historical perspective.",
+        "A4's modeling approach is better suited for a long-term 13-week forecast where capturing complex dynamics and variance is more critical than historical context."
+      ]
+    },
+    {
+      "pair": [
+        "A3",
+        "A5"
+      ],
+      "one": "A3",
+      "two": "A5",
+      "old_margin": -0.42,
+      "digits": [
+        -4.62,
+        -2.88,
+        -4.5,
+        -3.25,
+        -3.62
+      ],
+      "picks": [
+        "A5",
+        "A5",
+        "A5",
+        "A5",
+        "A5"
+      ],
+      "margins": [
+        -5.12,
+        -5.12,
+        -5.87,
+        -5.25,
+        -4.75
+      ],
+      "reasons": [
+        "A5 demonstrated superior critical thinking and better awareness of the risks associated with underestimating volatility and sudden spikes throughout the rounds.",
+        "A5 demonstrated superior critical thinking and a better ability to anticipate the non-linear volatility and systemic shifts that characterize this series.",
+        "A5 has demonstrated superior critical thinking and a better ability to identify systemic risks and potential biases in the group's forecasting models.",
+        "A5 demonstrated stronger critical thinking and better anticipation of the series' volatility and regime shifts, which is crucial for a long-term 13-week forecast.",
+        "A5 demonstrated superior critical thinking and better foresight regarding the potential for sudden volatility shifts and regime changes."
+      ]
+    },
+    {
+      "pair": [
+        "A4",
+        "A5"
+      ],
+      "one": "A4",
+      "two": "A5",
+      "old_margin": 0.78,
+      "digits": [
+        -1.25,
+        -0.75,
+        -1.38,
+        1.5,
+        0.0
+      ],
+      "picks": [
+        "A5",
+        "A5",
+        "A5",
+        "A5",
+        "A5"
+      ],
+      "margins": [
+        -3.37,
+        -4.37,
+        -3.37,
+        -3.12,
+        -3.12
+      ],
+      "reasons": [
+        "A5 demonstrated superior critical thinking and a better understanding of the systemic risks and non-linear dynamics present in the series.",
+        "A5 demonstrated superior critical thinking by identifying the risk of underestimating spikes, which is vital for a long-term 13-week forecast.",
+        "A5 demonstrated superior critical thinking by identifying the risk of underestimating spikes, which is crucial for a long-term 13-week forecast.",
+        "A5 showed superior critical thinking by correctly identifying the risk of underestimating spikes, which is crucial for a long-term 13-week forecast.",
+        "A5 demonstrated superior critical thinking and a better ability to anticipate the non-linear shifts and volatility clustering that characterized the actual data."
+      ]
+    }
+  ]
+}

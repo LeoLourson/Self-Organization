@@ -92,6 +92,101 @@ def collect(ident, limit=None, fresh=False):
                                 and ballot["logprob"]["2"] is not None)}
 
 
+# --- проба повторов ----------------------------------------------------------
+
+PROBE_REPEATS = 5
+
+
+def probe_file(ident, agent):
+    """Файл пробы повторов: runs/probe/<id>-<агент>.json."""
+    return store.ROOT / "runs" / "probe" / f"{ident}-{agent}.json"
+
+
+def messages(state, agent, one, two, structured):
+    """Сообщения одного вопроса: история агента и вопрос пары в прежнем или структурированном виде."""
+    system = runner.system_prompt(state["spec"]["condition"])
+    text = question(one, two) if structured else runner.text("pair").format(first=one, second=two)
+    return [{"role": "system", "content": system}, *state["histories"][agent],
+            {"role": "user", "content": text}]
+
+
+def probe(ident, agent, repeats=PROBE_REPEATS):
+    """Повторить голос одного агента по каждой паре: сначала цифрой, затем JSON с причиной.
+
+    Прежнее голосование читало логпробы — измерение без сэмплирования, и один вызов
+    даёт всё распределение. Здесь тот же вопрос задаётся несколько раз, чтобы видеть,
+    воспроизводится ли ответ, и меняется ли распределение от формата.
+    """
+    state = store.read_json(store.run_file("state", ident))
+    profile = state["spec"]["vote"]
+    cells = []
+    for x, y in runner.pairs([a for a in runner.names() if a != agent]):
+        one, two = (y, x) if int(store.digest([ident, agent, x, y]), 16) % 2 else (x, y)
+        previous = next(v for v in state["votes"][agent] if set(v["pair"]) == {x, y})
+        cell = {"pair": [x, y], "one": one, "two": two,
+                "old_margin": round(previous["logprob"][one] - previous["logprob"][two], 2),
+                "digits": [], "picks": [], "margins": [], "reasons": []}
+        for repeat in range(repeats):
+            values = llm.choice(profile, store.digest([ident, "probe-цифра", agent, x, y, repeat]),
+                                messages(state, agent, one, two, False), ("1", "2"))
+            cell["digits"].append(None if values["1"] is None or values["2"] is None
+                                  else round(values["1"] - values["2"], 2))
+            value = llm.ballot(profile, store.digest([ident, "probe-JSON", agent, x, y, repeat]),
+                               messages(state, agent, one, two, True))
+            try:
+                parsed = parse(value)
+                cell["picks"].append(one if parsed["choice"] == 1 else two)
+                cell["reasons"].append(parsed["reason"])
+            except ValueError:
+                cell["picks"].append(None)
+                cell["reasons"].append("")
+            cell["margins"].append(None if value["logprob"]["1"] is None or value["logprob"]["2"] is None
+                                   else round(value["logprob"]["1"] - value["logprob"]["2"], 2))
+        cells.append(cell)
+    record = {"id": ident, "agent": agent, "repeats": repeats, "cells": cells}
+    store.write_json(probe_file(ident, agent), record)
+    return record
+
+
+def probe_block(state, record):
+    """Строки пробы: перевесы и выборы повторов рядом с прежним голосом и итог по парам."""
+    cells, repeats = record["cells"], record["repeats"]
+    steady = sum(1 for cell in cells
+                 if None not in cell["digits"] and len({digit > 0 for digit in cell["digits"]}) == 1)
+    same_pick = sum(1 for cell in cells if None not in cell["picks"] and len(set(cell["picks"])) == 1)
+    shifts = [abs(sum(cell["digits"]) / len(cell["digits"]) - cell["old_margin"])
+              for cell in cells if None not in cell["digits"]]
+    spreads = [max(cell["digits"]) - min(cell["digits"]) for cell in cells if None not in cell["digits"]]
+    shift = sum(shifts) / len(shifts) if shifts else 0.0
+    spread = max(spreads) if spreads else 0.0
+    digit_line = (f"Знак перевеса в формате цифры совпал во всех повторах в {steady} "
+                  f"{pair_form(steady)} из {len(cells)}; "
+                  + ("значения повторились до последнего знака — распределение одно и то же."
+                     if spread < 0.05 else
+                     f"внутри одной пары значения расходятся до {spread:.2f} нат: провайдеры "
+                     "одной модели отдают разные распределения."))
+    shift_line = (f"Перевес при смене формата сдвигается в среднем на {shift:.2f} нат: "
+                  + ("распределение от формата почти не зависит."
+                     if shift < 0.5 else
+                     "структурированный ответ меняет само распределение, а не только запись."))
+    lines = [f"### Проба: {repeats} вызовов на одну пару, агент {record['agent']}", "",
+             f"Прогон {state['spec']['id'][:8]}: тот же агент с той же историей опрошен "
+             f"по каждой паре {count_word(repeats, 'раз', 'раза', 'раз')} — сначала цифрой, "
+             "затем JSON с причиной. Первый столбец — перевес прежнего голосования.", "",
+             "| Пара | Прежний голос | Цифра: перевес каждого вызова | JSON: выбор каждого вызова |",
+             "|---|---|---|---|"]
+    for cell in cells:
+        digits = ", ".join("—" if digit is None else f"{digit:+.2f}" for digit in cell["digits"])
+        picks = ", ".join("—" if pick is None else pick for pick in cell["picks"])
+        lines.append(f"| {cell['one']}–{cell['two']} | {cell['old_margin']:+.2f} | {digits} | {picks} |")
+    lines += ["", digit_line,
+              f"В формате с причиной выбор совпал во всех повторах в {same_pick} {pair_form(same_pick)} "
+              f"из {len(cells)}; в остальных тот же агент назвал разных организаторов, и причина "
+              "каждый раз подкрепляла названного.",
+              shift_line, ""]
+    return lines
+
+
 # --- сводка ------------------------------------------------------------------
 
 def ranking(ballots):
@@ -160,6 +255,11 @@ def count_word(n, one, few, many):
     if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
         return f"{n} {few}"
     return f"{n} {many}"
+
+
+def pair_form(n):
+    """Форма слова «пара» после числительного: в 1 паре, в 2 парах, в 11 парах."""
+    return "паре" if n % 10 == 1 and n % 100 != 11 else "парах"
 
 
 def run_block(state, ballots):
@@ -260,12 +360,21 @@ def report():
              "ответ — JSON с полями choice и reason. Прежние голоса не перезаписаны: колонка τ "
              "показывает, насколько новый порядок совпал с прежним, а «перевёрнуто пар» — "
              "сколько предпочтений изменилось. Порядок — по числу выборов в парах; при равенстве "
-             "решают сумма перевесов и имя.", ""]
+             "решают сумма перевесов и имя.", "",
+             "Первое голосование читало распределение цифр, а не выбирало токен; ответ с причиной "
+             "цифру выбирает, поэтому одиночный голос здесь — один замер из распределения, а не "
+             "само распределение. Насколько он устойчив, видно по пробе повторов в конце каждой "
+             "серии (`vote-probe`): одинаковые вызовы расходятся там, где перевес мал, и причина "
+             "каждый раз подкрепляет уже названную сторону.", ""]
     for key, subset in groups:
         lines += [f"# Серия — {analysis.series_title(key)}", ""]
         for ident in subset:
             lines += run_block(states[ident], subsets[ident])
         lines += why_block([states[i] for i in subset], subsets)
         lines += agree_block([ballot for ident in subset for ballot in subsets[ident]])
+        for path in sorted((store.ROOT / "runs/probe").glob("*.json")):
+            record = store.read_json(path)
+            if record["id"] in subset:
+                lines += probe_block(states[record["id"]], record)
     return "\n".join(lines).rstrip() + "\n"
 

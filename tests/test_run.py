@@ -586,6 +586,25 @@ class RevoteTests(unittest.TestCase):
         self.assertIn("совпала с более вероятной в 1 из 2", text)
         self.assertIn("50 %", text)
 
+    def test_probe_block_separates_steady_and_unsteady_cells(self):
+        """Проба: цифра повторяется, а выбор с причиной — нет; сдвиг перевеса между форматами виден."""
+        state = {"spec": {"id": "abc12345"}}
+        record = {"id": "abc12345", "agent": "A1", "repeats": 5, "cells": [
+            {"pair": ["A2", "A3"], "one": "A2", "two": "A3", "old_margin": 3.5,
+             "digits": [0.88, 0.88, 0.88, 0.52, 0.52],
+             "picks": ["A2", "A2", "A3", "A3", "A3"],
+             "margins": [-0.31] * 5, "reasons": ["x"] * 5},
+            {"pair": ["A2", "A4"], "one": "A2", "two": "A4", "old_margin": -1.0,
+             "digits": [-1.75] * 5, "picks": ["A2"] * 5, "margins": [0.62] * 5, "reasons": ["y"] * 5},
+        ]}
+        text = "\n".join(revote.probe_block(state, record))
+        self.assertIn("агент A1", text)
+        self.assertIn("+0.88, +0.88, +0.88, +0.52, +0.52", text)
+        self.assertIn("A2, A2, A3, A3, A3", text)
+        self.assertIn("совпал во всех повторах в 2 парах из 2", text)
+        self.assertIn("выбор совпал во всех повторах в 1 паре из 2", text)
+        self.assertIn("сдвигается в среднем на", text)
+
     def test_run_block_marks_ranking_votes_without_margins(self):
         """У прогона с ранжированием нет перевесов: в отчёте прочерк, а не нули."""
         state = {"spec": {"id": "abc12345", "condition": "open", "repeat": 0}, "votes": {"A1": [2, 3, 4, 5]}}
