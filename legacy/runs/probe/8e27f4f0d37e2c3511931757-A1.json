@@ -1,0 +1,229 @@
+{
+  "id": "8e27f4f0d37e2c3511931757",
+  "agent": "A1",
+  "repeats": 5,
+  "cells": [
+    {
+      "pair": [
+        "A2",
+        "A3"
+      ],
+      "one": "A3",
+      "two": "A2",
+      "old_margin": -1.12,
+      "digits": [
+        0.49,
+        0.49,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "picks": [
+        "A3",
+        "A3",
+        "A3",
+        "A3",
+        "A3"
+      ],
+      "margins": [
+        1.83,
+        1.44,
+        1.4,
+        1.4,
+        1.4
+      ],
+      "reasons": [
+        "A3's modeling approach is better suited for long-term forecasting as it focuses on regime shifts and self-excitation rather than just scenario-based probabilities.",
+        "A3's modeling approach is better suited for long-term forecasting as it focuses on regime shifts and self-excitation rather than just scenario building.",
+        "A3's modeling approach is better suited for a long-term 13-week forecast where identifying regime shifts and self-excitation is more critical than scenario building.",
+        "A3's modeling approach is better suited for long-term forecasting as it focuses on regime shifts and self-excitation rather than just scenario building.",
+        "A3's modeling approach is better suited for a long-term forecast requiring regime-shift detection and self-excitation modeling."
+      ]
+    },
+    {
+      "pair": [
+        "A2",
+        "A4"
+      ],
+      "one": "A2",
+      "two": "A4",
+      "old_margin": 3.5,
+      "digits": [
+        0.88,
+        0.88,
+        0.88,
+        0.52,
+        0.52
+      ],
+      "picks": [
+        "A2",
+        "A2",
+        "A4",
+        "A4",
+        "A4"
+      ],
+      "margins": [
+        -0.31,
+        -0.32,
+        -0.32,
+        -0.31,
+        0.13
+      ],
+      "reasons": [
+        "A2 demonstrated a better ability to identify regime shifts and construct plausible scenarios, even when the specific values were inaccurate.",
+        "A2 demonstrated a superior ability to identify regime shifts and construct plausible scenarios, which is critical for a long-term 13-week forecast.",
+        "A4's critical perspective on volatility suppression bias is essential for a long-term forecast where underestimating spikes is the primary risk.",
+        "A4's critical focus on volatility suppression bias is essential for a long-term forecast to prevent the group from underestimating potential surges.",
+        "A4's critical perspective on volatility suppression bias is essential for a long-term forecast to prevent the group from underestimating sudden, high-amplitude surges."
+      ]
+    },
+    {
+      "pair": [
+        "A2",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A2",
+      "old_margin": -0.63,
+      "digits": [
+        -0.04,
+        -0.04,
+        -0.04,
+        -0.04,
+        -0.04
+      ],
+      "picks": [
+        "A5",
+        "A5",
+        "A5",
+        "A5",
+        "A5"
+      ],
+      "margins": [
+        1.48,
+        1.48,
+        1.48,
+        1.48,
+        1.48
+      ],
+      "reasons": [
+        "A5 demonstrated a superior ability to identify regime shifts and the rising baseline, which is crucial for a long-term 13-week forecast.",
+        "A5 demonstrated a superior ability to identify regime shifts and accurately characterize the increasing volatility and oscillation frequency in the series.",
+        "A5 has shown superior ability in identifying regime shifts and quantifying the complex, non-linear volatility patterns that have driven recent forecasting errors.",
+        "A5 showed superior ability to identify regime shifts and quantify volatility, which is crucial for a long-term, high-uncertainty forecast.",
+        "A5 demonstrated a superior ability to identify regime shifts and quantify the evolving volatility patterns that the group previously underestimated."
+      ]
+    },
+    {
+      "pair": [
+        "A3",
+        "A4"
+      ],
+      "one": "A3",
+      "two": "A4",
+      "old_margin": 0.0,
+      "digits": [
+        0.52,
+        0.52,
+        0.64,
+        0.64,
+        0.64
+      ],
+      "picks": [
+        "A4",
+        "A4",
+        "A4",
+        "A4",
+        "A4"
+      ],
+      "margins": [
+        -1.87,
+        -1.87,
+        -1.92,
+        -1.87,
+        -1.87
+      ],
+      "reasons": [
+        "A4's critical focus on volatility suppression bias is essential for a long-term forecast where underestimating sudden surges is the group's primary systemic risk.",
+        "A4's focus on identifying volatility suppression bias is crucial for a long-term forecast where underestimating sudden surges is the group's primary recurring failure.",
+        "A4's critical perspective on volatility suppression is essential for a long-term forecast where underestimating spikes is the primary risk.",
+        "A4's critical perspective on volatility suppression bias is essential for a long-term forecast where underestimating spikes is the primary risk.",
+        "A4 has demonstrated a superior understanding of the series' volatility and the group's systemic tendency to underestimate high-activity regimes."
+      ]
+    },
+    {
+      "pair": [
+        "A3",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A3",
+      "old_margin": 0.63,
+      "digits": [
+        -0.08,
+        -0.08,
+        -0.08,
+        -0.08,
+        -0.08
+      ],
+      "picks": [
+        "A5",
+        "A5",
+        "A5",
+        "A5",
+        "A5"
+      ],
+      "margins": [
+        1.84,
+        1.84,
+        1.86,
+        1.84,
+        1.86
+      ],
+      "reasons": [
+        "A5's role as a statistician has provided the most accurate quantitative descriptions of the regime shifts and volatility patterns observed in the series.",
+        "A5 has demonstrated a superior ability to identify regime shifts and quantify the increasing volatility that the group has consistently underestimated.",
+        "A5's statistical focus on regime shifts and volatility patterns is more critical for a long-term 13-week forecast than A3's modeling of short-term oscillations.",
+        "A5 demonstrated a superior ability to identify regime shifts and quantify the increasing volatility that the group consistently underestimated.",
+        "A5 has demonstrated a more accurate ability to identify regime shifts and quantify the increasing frequency of oscillations compared to the modeler's smoother projections."
+      ]
+    },
+    {
+      "pair": [
+        "A4",
+        "A5"
+      ],
+      "one": "A5",
+      "two": "A4",
+      "old_margin": 3.62,
+      "digits": [
+        1.27,
+        1.27,
+        1.27,
+        1.27,
+        1.27
+      ],
+      "picks": [
+        "A5",
+        "A5",
+        "A5",
+        "A5",
+        "A5"
+      ],
+      "margins": [
+        2.64,
+        2.64,
+        2.55,
+        2.55,
+        2.64
+      ],
+      "reasons": [
+        "A5's statistical approach is more suitable for managing a long-term 13-week forecast where identifying regime shifts and volatility patterns is crucial.",
+        "A5 has demonstrated a superior ability to identify regime shifts and quantify complex volatility patterns, which is crucial for a long-term forecast.",
+        "A5 demonstrated a superior ability to identify regime shifts and quantify volatility, which is crucial for a long-term forecast in an unstable series.",
+        "A5 (scenarist) demonstrated better strategic thinking by providing diverse, probabilistic scenarios that accounted for regime shifts, which is crucial for a long-term 13-week forecast.",
+        "A5's statistical focus on regime shifts and volatility patterns is better suited for a long-term 13-week forecast than A4's purely critical perspective."
+      ]
+    }
+  ]
+}

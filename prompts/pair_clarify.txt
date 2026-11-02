@@ -1,0 +1,1 @@
+The pair holds exactly two agents: {first} and {second}. Answer 1 to make {first} the organizer, 2 to make {second} the organizer. No other number is an answer.

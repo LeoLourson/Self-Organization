@@ -1,14 +1,12 @@
 """Командная строка эксперимента. Порядок работы описан в README.md.
 
-  start   --profile P --condition C [--repeat N]   создать прогон
-  advance --id ID                                  исполнять прогон до запроса субагенту или до конца
+  start   --profile P --condition C [--repeat N]   создать запуск
+  advance --id ID                                  исполнять запуск до запроса субагенту или до конца
   submit  --id ID --file FILE                      передать ответ субагента
-  status  --id ID                                  фаза прогона и ожидающий запрос
-  plan    --profile P [--conditions ...] --repeats N   перечислить прогоны порции
-  analyze [--save]                                 сводка и статистики по всем прогонам
-  check-vote --profile P                           проверить логпробы эндпоинта одним вопросом
-  revote   --id ID [--id ID ...] [--pairs N] [--fresh]  заново проголосовать по парам с причиной
-  vote-probe --id ID --agent A1 [--repeats N]      повторить голос агента по парам: цифрой и JSON
+  status  --id ID                                  фаза запуска и ожидающий запрос
+  plan    --profile P [--conditions ...] --repeats N   перечислить запуски порции
+  analyze [--save] [--legacy]                      сводка и статистики по всем запускам
+  check-vote --profile P                           проверить логпробы в обоих форматах голоса и отдачу рассуждения
   agent-file                                       записать .claude/agents/<subagent_type>.md
   sandbox on|off|status                            убрать или вернуть инструкции Claude Code
 """
@@ -18,11 +16,11 @@ import json
 import sys
 from pathlib import Path
 
-from netexp import analysis, revote, run, sandbox, store
+from netexp import analysis, run, sandbox, store
 
 
 def plan(profile, conditions, repeats):
-    """Прогоны порции; у завершённых done=true. Повторы 0..agents-1 закрывают латинский квадрат."""
+    """Запуски порции; у завершённых done=true. Повторы 0..agents-1 закрывают латинский квадрат."""
     jobs = []
     for condition in conditions:
         for repeat in range(repeats):
@@ -50,22 +48,10 @@ def main():
 
     p = commands.add_parser("analyze")
     p.add_argument("--save", action="store_true", help="записать отчёт в reports/ вместо вывода на экран")
+    p.add_argument("--legacy", action="store_true", help="считать запуски из legacy/runs, а не из runs")
 
     p = commands.add_parser("check-vote")
     p.add_argument("--profile", required=True)
-
-    p = commands.add_parser("revote")
-    p.add_argument("--id", action="append", required=True, help="ID прогона; можно указать несколько")
-    p.add_argument("--pairs", type=int, help="только первые N пар на прогон — для пробы")
-    p.add_argument("--fresh", action="store_true", help="забыть собранные голоса и пройти заново")
-
-    p = commands.add_parser("revote-report")
-    p.add_argument("--save", action="store_true", help="записать отчёт в reports/ вместо вывода на экран")
-
-    p = commands.add_parser("vote-probe")
-    p.add_argument("--id", required=True, help="ID прогона")
-    p.add_argument("--agent", required=True, help="агент, чьи голоса повторяются")
-    p.add_argument("--repeats", type=int, default=revote.PROBE_REPEATS, help="вызовов на пару")
 
     for name in ("advance", "status", "submit"):
         p = commands.add_parser(name)
@@ -80,9 +66,10 @@ def main():
     args = vars(parser.parse_args())
     command = args.pop("command")
     if command == "analyze":
-        markdown = analysis.report()
+        markdown = analysis.report(store.ROOT / "legacy/runs" if args["legacy"] else None)
         if args["save"]:
-            path = store.ROOT / "reports" / f"analysis-{datetime.date.today().isoformat()}.md"
+            prefix = "analysis-legacy" if args["legacy"] else "analysis"
+            path = store.ROOT / "reports" / f"{prefix}-{datetime.date.today().isoformat()}.md"
             path.parent.mkdir(exist_ok=True)
             path.write_text(markdown + "\n", encoding="utf-8")
             result = {"report": store.relative(path)}
@@ -93,23 +80,6 @@ def main():
         result = run.start(**args)
     elif command == "check-vote":
         result = run.check_vote(args["profile"])
-    elif command == "revote":
-        result = [revote.collect(ident, limit=args["pairs"], fresh=args["fresh"]) for ident in args["id"]]
-    elif command == "revote-report":
-        markdown = revote.report()
-        if args["save"]:
-            path = store.ROOT / "reports" / f"vote-reasons-{datetime.date.today().isoformat()}.md"
-            path.parent.mkdir(exist_ok=True)
-            path.write_text(markdown, encoding="utf-8")
-            result = {"report": store.relative(path)}
-        else:
-            print(markdown)
-            return
-    elif command == "vote-probe":
-        record = revote.probe(args["id"], args["agent"], args["repeats"])
-        state = store.read_json(store.run_file("state", args["id"]))
-        print("\n".join(revote.probe_block(state, record)))
-        return
     elif command == "plan":
         result = plan(**args)
     elif command == "submit":

@@ -1,0 +1,1 @@
+Answer with a JSON object with the choice first and the reason after it: {{"choice": 1 or 2, "reason": "<one sentence>"}} — 1 if {first}, 2 if {second}. Give the reason in at most {words} words.

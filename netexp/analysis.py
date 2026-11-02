@@ -1,38 +1,39 @@
-"""Анализ прогонов: какие роли раздают организаторы, закрепляются ли роли за агентами,
-повторяется ли состав ролей у сменяющихся центров, какую иерархию выстраивает
+"""Анализ запусков: какие роли раздают организаторы, закрепляются ли роли за агентами,
+повторяется ли состав ролей у сменяющихся организаторов, какую иерархию выстраивает
 голосование и взаимны ли предпочтения. Запросов к моделям нет.
 
-Читает готовые прогоны из runs/results и незавершённые — из runs/state (те, где есть
+Читает готовые запуски из runs/results и незавершённые — из runs/state (те, где есть
 все раунды и все голоса). Каждая статистика считается против случайного уровня:
 закрепление ролей — перестановочный тест (те же наборы ролей, случайно розданные тем
 же исполнителям), повтор состава — независимые выборы из эмпирических наборов
 условия, линейность иерархии — сравнение с голосованием случайных voters.
-Терминология — обзора «Социумы ИИ-агентов» (literature-review.up.railway.app):
-закрепление ролей — элемент уклада, повтор состава — конвенция, голосование —
-делегирование. Отчёт собирается в Markdown: python run.py analyze [--save].
+Отчёт собирается в Markdown: python run.py analyze [--save].
 Числа идут без выводов: какую гипотезу они поддерживают, решает человек.
 """
+import functools
 import itertools
 import math
 import random
 
-from . import run, series, store
+from . import reasons, run, series, store, vote
 
 SIMULATIONS = 20000
+RECIPROCITY_SIMULATIONS = 2000  # нуль считается на каждый голос каждого запуска
 SEED = 20261101
 
 
 # --- данные -----------------------------------------------------------------
 
-def runs():
-    """Прогоны с полными раундами: готовые результаты, незавершённые состояния с голосами
+def runs(base=None):
+    """Запуски с полными раундами: готовые результаты, незавершённые состояния с голосами
     и состояния контроля solo (голосов и судьи в solo нет — достаточно раундов)."""
     agents = store.config()["agents"]
+    base = base or store.ROOT / "runs"
     found = []
-    for path in sorted((store.ROOT / "runs/results").glob("*.json")):
+    for path in sorted((base / "results").glob("*.json")):
         found.append(store.read_json(path))
-    for path in sorted((store.ROOT / "runs/state").glob("*.json")):
-        if store.run_file("results", path.stem).exists():
+    for path in sorted((base / "state").glob("*.json")):
+        if (base / "results" / path.name).exists():
             continue
         state = store.read_json(path)
         if len(state.get("rounds", [])) == agents and (len(state.get("votes", {})) == agents
@@ -42,7 +43,7 @@ def runs():
 
 
 def status(data):
-    """Статус прогона словом: завершён, остановлен на судье, провален или имя фазы."""
+    """Статус запуска словом: завершён, остановлен на судье, провален или имя фазы."""
     value = data.get("status") or data.get("phase") or "?"
     return {"done": "завершён", "judge": "остановлен на судье", "failed": "провален"}.get(value, value)
 
@@ -68,7 +69,7 @@ def series_key(data):
 
 
 def by_series(data):
-    """Прогоны, разложенные по сериям в порядке первого появления."""
+    """Запуски, разложенные по сериям в порядке первого появления."""
     groups = []
     for item in data:
         for key, subset in groups:
@@ -95,13 +96,13 @@ def language(subset):
 
 
 def series_judges(subset):
-    """Судьи серии: в solo судьи нет, поэтому его имя берётся с групповых прогонов."""
+    """Судьи серии: в solo судьи нет, поэтому его имя берётся с групповых запусков."""
     names = sorted({(item["spec"].get("judge") or {}).get("model") for item in subset} - {None})
     return ", ".join(names)
 
 
 def series_line(key, subset):
-    """Строка о серии: судья, язык промптов и сколько прогонов каждого условия."""
+    """Строка о серии: судья, язык промптов и сколько запусков каждого условия."""
     judge = series_judges(subset) or "не звали"
     counts = {}
     for item in subset:
@@ -113,7 +114,7 @@ def series_line(key, subset):
         prompts = f"промпты на {'английском' if tongue == 'английский' else 'русском'} языке"
     else:
         prompts = "язык промптов неизвестен"
-    return f"Судья `{judge}`, {prompts}; прогонов {len(subset)}: {mix}."
+    return f"Судья `{judge}`, {prompts}; запусков {len(subset)}: {mix}."
 
 
 # --- роли -------------------------------------------------------------------
@@ -175,11 +176,11 @@ def fixation(rounds):
 
 
 def set_repeats(rounds, pool=None, rng=None):
-    """Скольким сменам центра состав ролей повторил предыдущий.
+    """Скольким сменам организатора состав ролей повторил предыдущий.
 
     При pool и rng наборы раундов заменяются независимыми выборами из pool —
     так получается нулевой уровень конвенции: повторы, объясняющиеся общими
-    предпочтениями центров, а не передачей состава между ними.
+    предпочтениями организаторов, а не передачей состава между ними.
     """
     sets = role_sets(rounds)
     if rng is not None:
@@ -265,6 +266,70 @@ def linearity_null(agents):
             "low": values[math.floor(0.025 * SIMULATIONS)], "high": values[math.ceil(0.975 * SIMULATIONS) - 1]}
 
 
+def unanimous_pairs(votes, agents):
+    """Сколько пар все три голосующих решили одинаково."""
+    _, scores, _ = majority(votes, agents)
+    return sum(1 for score in scores.values() if max(score) == len(agents) - 2)
+
+
+def random_unanimous(agents, rng):
+    """Единодушные пары при голосовании, где предпочтения каждого агента — случайный порядок."""
+    orders = {a: rng.sample(agents, len(agents)) for a in agents}
+    count = 0
+    for x, y in itertools.combinations(agents, 2):
+        for_x = sum(1 for v in agents if v not in (x, y) and orders[v].index(x) < orders[v].index(y))
+        count += int(for_x in (0, len(agents) - 2))
+    return count
+
+
+@functools.lru_cache(maxsize=None)
+def unanimity_values(agents):
+    """Распределение единодушных пар одного запуска при случайных голосующих."""
+    rng = random.Random(SEED)
+    return tuple(random_unanimous(list(agents), rng) for _ in range(SIMULATIONS))
+
+
+def unanimity_test(vote_sets, agents):
+    """Среднее число единодушных пар по запускам условия против случайных голосующих; p односторонний."""
+    observed = sum(unanimous_pairs(votes, agents) for votes in vote_sets) / len(vote_sets)
+    values, rng = unanimity_values(tuple(agents)), random.Random(SEED)
+    draws = [sum(rng.choices(values, k=len(vote_sets))) / len(vote_sets) for _ in range(SIMULATIONS)]
+    return {"mean": observed, "null": interval(draws),
+            "p": (1 + sum(v >= observed for v in draws)) / (SIMULATIONS + 1)}
+
+
+def leader_shares(wins):
+    """Лидеры запуска с долями: при равенстве побед запуск делится поровну, имя не решает."""
+    best = max(wins.values())
+    leaders = [a for a in wins if wins[a] == best]
+    return {a: 1 / len(leaders) for a in leaders}
+
+
+def top_share(runs_shares, agents):
+    """Самый частый лидер и сумма его долей по запускам."""
+    totals = {a: sum(shares.get(a, 0) for shares in runs_shares) for a in agents}
+    leader = max(agents, key=lambda a: (totals[a], a == agents[0]))
+    return leader, totals[leader]
+
+
+def leader_test(vote_sets, agents):
+    """Повторяется ли лидер между повторами условия.
+
+    Нуль: имена агентов независимо переставляются внутри каждого запуска, поэтому число
+    лидеров и равенства побед сохраняются, а связь с именем разрушается. p односторонний.
+    """
+    observed = [leader_shares(majority(votes, agents)[0]) for votes in vote_sets]
+    leader, count = top_share(observed, agents)
+    rng, at_least = random.Random(SEED), 0
+    for _ in range(SIMULATIONS):
+        drawn = []
+        for shares in observed:
+            names = rng.sample(agents, len(agents))
+            drawn.append({names[agents.index(a)]: share for a, share in shares.items()})
+        at_least += int(top_share(drawn, agents)[1] >= count - 1e-9)
+    return {"leader": leader, "count": count, "runs": len(vote_sets), "p": (1 + at_least) / (SIMULATIONS + 1)}
+
+
 def transitivity(vote):
     """Доля согласованных троек в предпочтениях одного голосующего (для логпробов).
 
@@ -302,13 +367,17 @@ def voter_ranking(vote):
 
 
 def reciprocity(votes):
-    """Взаимность делегирования: согласованность мест, которые агенты дают друг другу.
+    """Взаимность: согласованность мест, которые агенты дают друг другу.
 
     Для каждой пары агентов берётся точка (место j у i, место i у j); τ — конкордация
     этих точек со связями: +1 — предпочтения возвращаются (высокое место взаимно),
     −1 — односторонние, 0 — независимые.
     """
-    rankings = {voter: voter_ranking(vote) for voter, vote in votes.items()}
+    return rankings_tau({voter: voter_ranking(vote) for voter, vote in votes.items()})
+
+
+def rankings_tau(rankings):
+    """τ взаимности по готовым порядкам голосующих; None, если взаимных пар меньше двух."""
     points = [(rankings[x].index(y), rankings[y].index(x))
               for x, y in itertools.combinations(rankings, 2)
               if y in rankings[x] and x in rankings[y]]
@@ -319,6 +388,85 @@ def reciprocity(votes):
         concordant += int((a - c) * (b - d) > 0)
         discordant += int((a - c) * (b - d) < 0)
     return (concordant - discordant) / math.comb(len(points), 2)
+
+
+def interval(values):
+    """Среднее и 95%-интервал ряда значений."""
+    ordered = sorted(values)
+    count = len(ordered)
+    return {"mean": sum(ordered) / count, "low": ordered[math.floor(0.025 * count)],
+            "high": ordered[math.ceil(0.975 * count) - 1]}
+
+
+@functools.lru_cache(maxsize=None)
+def random_tau_values(agents):
+    """τ взаимности при независимых случайных порядках голосующих."""
+    rng = random.Random(SEED)
+    return tuple(rankings_tau({v: rng.sample([a for a in agents if a != v], len(agents) - 1) for v in agents})
+                 for _ in range(RECIPROCITY_SIMULATIONS))
+
+
+def reciprocity_null(agents):
+    return interval(random_tau_values(tuple(agents)))
+
+
+def shared_tau_values(votes):
+    """τ взаимности, если у агентов остаются только общие предпочтения и прежний разброс.
+
+    Общий порядок сам даёт τ > 0: популярные агенты ставят друг друга высоко. Поэтому оценка
+    голосующего разлагается на популярность кандидата и остаток; остатки перемешиваются
+    между всеми клетками, что сохраняет популярность и разброс, но разрушает связь внутри пар.
+    Голосам без перевесов разложить нечего: None.
+    """
+    if not all(isinstance(vote, list) for vote in votes.values()):
+        return None
+    scores = {voter: run.ballot_score(ballots) for voter, ballots in votes.items()}
+    agents = sorted({a for row in scores.values() for a in row})
+    popularity = {a: sum(row[a] for row in scores.values() if a in row) / sum(a in row for row in scores.values())
+                  for a in agents}
+    cells = [(voter, a) for voter, row in scores.items() for a in row]
+    residuals = [scores[voter][a] - popularity[a] for voter, a in cells]
+    rng = random.Random(SEED)
+    values = []
+    for _ in range(RECIPROCITY_SIMULATIONS):
+        rng.shuffle(residuals)
+        drawn = {voter: {} for voter in scores}
+        for (voter, a), residual in zip(cells, residuals):
+            drawn[voter][a] = popularity[a] + residual
+        values.append(rankings_tau({voter: sorted(row, key=lambda a: (-row[a], a)) for voter, row in drawn.items()}))
+    return values
+
+
+def reciprocity_test(votes):
+    """τ взаимности против двух нулей; односторонний p — против общих предпочтений."""
+    tau = reciprocity(votes)
+    randoms = random_tau_values(tuple(sorted(votes)))
+    shared = shared_tau_values(votes)
+    return {"tau": tau, "random": interval(randoms), "random_values": randoms,
+            "shared": interval(shared) if shared else None, "shared_values": shared,
+            "p": (1 + sum(v >= tau for v in shared)) / (len(shared) + 1) if shared else None}
+
+
+def pooled_reciprocity(tests):
+    """Средний τ по запускам условия: каждый розыгрыш берёт значение нуля из каждого запуска независимо."""
+    rng = random.Random(SEED)
+    mean_draws = lambda rows: [sum(rng.choice(row) for row in rows) / len(rows) for _ in range(RECIPROCITY_SIMULATIONS)]
+    tau = sum(test["tau"] for test in tests) / len(tests)
+    random_draws = mean_draws([test["random_values"] for test in tests])
+    with_shared = all(test["shared_values"] for test in tests)
+    shared_draws = mean_draws([test["shared_values"] for test in tests]) if with_shared else None
+    return {"tau": tau, "runs": len(tests), "random": interval(random_draws),
+            "shared": interval(shared_draws) if shared_draws else None,
+            "p": (1 + sum(v >= tau for v in shared_draws)) / (len(shared_draws) + 1) if shared_draws else None}
+
+
+def fmt_interval(value):
+    """Среднее и интервал нуля со знаком или прочерк."""
+    return "—" if value is None else f"{value['mean']:+.2f} ({value['low']:+.2f}…{value['high']:+.2f})"
+
+
+def fmt_p(value):
+    return "—" if value is None else ("<0.001" if value < 0.001 else f"{value:.3f}")
 
 
 # --- согласие с точностью и судьёй -------------------------------------------
@@ -338,20 +486,21 @@ def organizer_orders(data):
     return accuracy, judge
 
 
-def agreement(data):
+def agreement(data, votes=None):
     """Согласие голосов (τ Кендалла) с точностью и оценкой судьи: по голосующим и группе."""
+    votes = data["votes"] if votes is None else votes
     agents = run.names()
     accuracy, judge = organizer_orders(data)
     rows = {}
-    for voter, vote in data["votes"].items():
-        ranking = voter_ranking(vote)
+    for voter, ballots in votes.items():
+        ranking = voter_ranking(ballots)
         row = {}
         for name, reference in (("accuracy", accuracy), ("judge", judge)):
             reference = [a for a in reference if a != voter]
             if sorted(reference) == sorted(ranking):
                 row[name] = run.kendall_tau(ranking, reference)
         rows[voter] = row
-    wins, _, _ = majority(data["votes"], agents)
+    wins, _, _ = majority(votes, agents)
     group = sorted(agents, key=lambda a: (-wins[a], a))
     tau_group = {}
     for name, reference in (("accuracy", accuracy), ("judge", judge)):
@@ -371,6 +520,117 @@ def tau_range(values):
     return "—" if not values else f"от {min(values):+.2f} до {max(values):+.2f}"
 
 
+# --- следуют ли голоса за точностью -------------------------------------------
+
+def raw_errors(data):
+    """Ошибка каждого организатора в запуске: то, что агенты могли сравнить по сводкам."""
+    return {r["organizer"]: r["mase"] for r in data["rounds"] if r.get("mase") is not None}
+
+
+def window_errors(data, subset):
+    """Ошибка организатора минус средняя ошибка его окна по запускам условия: поправка на трудность периода."""
+    means = {}
+    for index in range(len(data["rounds"])):
+        values = [d["rounds"][index]["mase"] for d in subset
+                  if len(d["rounds"]) > index and d["rounds"][index].get("mase") is not None]
+        means[index] = sum(values) / len(values) if values else None
+    return {r["organizer"]: r["mase"] - means[i] for i, r in enumerate(data["rounds"]) if r.get("mase") is not None}
+
+
+def accuracy_stats(rows):
+    """Первые места у самых точных и средний τ между порядком голосующего и порядком ошибок."""
+    hits = voters = winners = 0
+    taus = []
+    for row in rows:
+        errors = row["errors"]
+        best = min(errors, key=lambda a: (errors[a], a))
+        winners += int(row["group"][0] == best)
+        for ranking in row["rankings"].values():
+            reference = sorted(ranking, key=lambda a: (errors[a], a))
+            hits += int(ranking[0] == reference[0])
+            voters += 1
+            taus.append(run.kendall_tau(ranking, reference))
+    return {"hits": hits, "voters": voters, "winners": winners, "runs": len(rows), "tau": sum(taus) / len(taus)}
+
+
+def accuracy_test(rows):
+    """Следование голоса за ошибками против перемешивания ошибок между агентами внутри запуска.
+
+    Перемешивание идёт по запускам, поскольку голоса внутри запуска зависимы.
+    Односторонний p: голоса следуют за точностью не реже, чем при случайной привязке ошибок.
+    """
+    observed = accuracy_stats(rows)
+    rng = random.Random(SEED)
+    at_least_hits = at_least_tau = 0
+    for _ in range(RECIPROCITY_SIMULATIONS):
+        drawn = []
+        for row in rows:
+            values = list(row["errors"].values())
+            rng.shuffle(values)
+            drawn.append({**row, "errors": dict(zip(row["errors"], values))})
+        stats = accuracy_stats(drawn)
+        at_least_hits += int(stats["hits"] >= observed["hits"])
+        at_least_tau += int(stats["tau"] >= observed["tau"])
+    return {**observed, "p_hits": (1 + at_least_hits) / (RECIPROCITY_SIMULATIONS + 1),
+            "p_tau": (1 + at_least_tau) / (RECIPROCITY_SIMULATIONS + 1)}
+
+
+def accuracy_lines(subset, label, errors_of, title):
+    """Строка отчёта об одном голосе и одном виде ошибки."""
+    rows = []
+    for data in subset:
+        votes = dict(vote_forms(data)).get(label)
+        errors = errors_of(data)
+        if votes is None or len(errors) != len(run.names()):
+            continue
+        rows.append({"rankings": {v: voter_ranking(ballots) for v, ballots in votes.items()},
+                     "group": agreement(data, votes)[1], "errors": errors})
+    if not rows:
+        return []
+    value = accuracy_test(rows)
+    return [f"- Голос {label}, {title}: самого точного поставили первым {value['hits']} из {value['voters']} голосующих "
+            f"(случайно 25%, p = {fmt_p(value['p_hits'])}); победитель голосования — самый точный в {value['winners']} "
+            f"из {value['runs']} запусков (случайно 20%); средняя τ с точностью {value['tau']:+.2f} "
+            f"(p = {fmt_p(value['p_tau'])})."]
+
+
+def judge_errors(data):
+    """Оценки судьи за распределение ролей со знаком минус: чем выше оценка, тем раньше в порядке.
+
+    Без всех пяти оценок или при равных оценках порядка нет: None.
+    """
+    grades = {j["organizer"]: j["allocation"] for j in data.get("judgments", [])
+              if j["kind"] == "allocation" and isinstance(j.get("allocation"), int)}
+    if len(grades) != len(run.names()) or len(set(grades.values())) == 1:
+        return None
+    return {agent: -grade for agent, grade in grades.items()}
+
+
+def judge_lines(subset, label):
+    """Строка отчёта: следует ли голос за оценками судьи; уровень сравнения — перемешанные оценки."""
+    rows = []
+    for data in subset:
+        votes, errors = dict(vote_forms(data)).get(label), judge_errors(data)
+        if votes is not None and errors is not None:
+            rows.append({"rankings": {v: voter_ranking(ballots) for v, ballots in votes.items()},
+                         "group": agreement(data, votes)[1], "errors": errors})
+    if not rows:
+        return []
+    value = accuracy_test(rows)
+    return [f"- Голос {label}, оценка судьи: средняя τ с судьёй {value['tau']:+.2f} по {value['runs']} запуск. "
+            f"(p = {fmt_p(value['p_tau'])})."]
+
+
+def accuracy_section(subset):
+    """Блок условия: голоса против сырой ошибки, ошибки с поправкой на окно и оценок судьи."""
+    lines = []
+    for label in ("цифра", "JSON"):
+        lines += accuracy_lines(subset, label, raw_errors, "сырая ошибка")
+        lines += accuracy_lines(subset, label, lambda data: window_errors(data, subset), "с поправкой на окно")
+        lines += judge_lines(subset, label)
+    return ["### Следуют ли голоса за точностью и судьёй", "", *lines, ""] if lines else []
+
+
 # --- коллективный выигрыш ----------------------------------------------------
 
 def sign_test(wins, total):
@@ -382,10 +642,9 @@ def sign_test(wins, total):
 
 
 def ensemble_mase(data, condition, round_index):
-    """MASE медианного прогноза всех прогонов условия на окно раунда round_index.
+    """MASE медианного прогноза всех запусков условия на окно раунда round_index.
 
-    Медиана — механическая агрегация без обсуждения: ступень «независимый ансамбль»
-    из лестницы сравнения обзора (гл. 13.2).
+    Медиана — механическая агрегация без обсуждения: независимый ансамбль.
     """
     forecasts, actual = [], None
     for d in data:
@@ -422,7 +681,7 @@ def delta_q_section(data):
                 pairs.append((condition, d["spec"]["repeat"], group_round["organizer"],
                               group_round["mase"], solo_round["mase"]))
     if not pairs:
-        return lines + [f"solo-прогонов с полными раундами в серии: {len(solo)}; пар с групповыми условиями "
+        return lines + [f"solo-запусков с полными раундами в серии: {len(solo)}; пар с групповыми условиями "
                         "нет — запустите те же повторы командой `python run.py plan --profile <профиль> "
                         "--conditions solo --repeats 5`.", ""]
     lines += ["| Условие | Повтор | Раунд ведёт | MASE группа | MASE одиночка | ΔQ |", "|---|---|---|---|---|---|"]
@@ -450,7 +709,7 @@ def delta_q_section(data):
 
 def solo_section(subset):
     """Секция контроля solo: одиночные прогнозы без общения."""
-    lines = ["## Контроль `solo`", "", "| Прогон | Повтор | Статус | MASE по раундам |", "|---|---|---|---|"]
+    lines = ["## Контроль `solo`", "", "| Запуск | Повтор | Статус | MASE по раундам |", "|---|---|---|---|"]
     for data in subset:
         rounds = "; ".join(f"{r['organizer']} {r['mase']:.2f}" if r.get("mase") is not None
                           else f"{r['organizer']} —" for r in data["rounds"])
@@ -465,38 +724,62 @@ def legend():
     return [
         "**Роли.** Пространство выбора задано меню шести ролей; одна роль может достаться "
         "нескольким агентам, часть ролей может остаться неиспользованной.",
-        f"**Конвенция.** Повтор — следующему центру достался тот же состав ролей, что предыдущему. "
-        f"Случайный уровень — составы прогона разыграны как независимые выборы из эмпирических "
+        f"**Конвенция.** Повтор — следующему организатору достался тот же состав ролей, что предыдущему. "
+        f"Случайный уровень — составы запуска разыграны как независимые выборы из эмпирических "
         f"составов серии ({SIMULATIONS} розыгрышей): повторы, объясняющиеся общими предпочтениями, "
         "не считаются передачей состава.",
-        f"**Закрепление (уклад).** Повтор — агент в следующий раз работает исполнителем и получает ту "
+        f"**Закрепление.** Повтор — агент в следующий раз работает исполнителем и получает ту "
         f"же роль, что в прошлый. Случайный уровень — те же наборы ролей, случайно розданные тем же "
         f"исполнителям ({SIMULATIONS} розыгрышей).",
-        "**Голосование (делегирование).** По каждой паре голосуют остальные трое, победитель — "
+        "**Голосование.** По каждой паре голосуют остальные трое, победитель — "
         "большинство. Линейность h — доля согласованных троек в итоговом порядке (1 — полный порядок "
         "без циклов); случайный уровень — те же голосующие со случайными порядками предпочтений. "
-        "Взаимность τ — согласованность мест, которые два агента дают друг другу в своих "
-        "ранжированиях: +1 — предпочтения возвращаются, −1 — односторонние. «τ группы с точностью» "
-        "и «с судьёй» — согласие итогового порядка с MASE и с оценками судьи.",
+        "τ Кендалла измеряет сходство двух порядков: при +1 они совпадают, при −1 обратны, а около нуля не связаны. "
+        "В отчёте эта мера применяется к разным порядкам, поэтому её значения между собой не сопоставляются. "
+        "τ взаимности сравнивает места, которые два агента дают друг другу: при +1 предпочтения возвращаются, "
+        "при −1 они односторонние. Её интервалы показывают два уровня: случайные порядки и общие предпочтения, "
+        f"где популярность кандидатов и разброс сохранены, а связь внутри пар разрушена ({RECIPROCITY_SIMULATIONS} "
+        "розыгрышей). Общие предпочтения сами поднимают τ взаимности выше нуля, поэтому p односторонний и считается "
+        "против второго уровня. «τ группы с точностью» и «τ группы с судьёй» сравнивают итоговый порядок голосования "
+        "с порядком организаторов по MASE и по оценкам судьи.",
+        "**Согласие о руководителе.** Единодушная пара — все три голосующих решили её одинаково; уровень сравнения — "
+        "случайные голосующие, p односторонний. Лидер — агент с наибольшим числом побед, при равенстве запуск делится "
+        "поровну; уровень сравнения — имена агентов, независимо переставленные внутри каждого запуска.",
+        "**Два голоса.** Каждая пара решается цифрой и JSON с причиной. Строка «цифра» считается по "
+        "перевесу логпробов, строка «JSON» — по названной стороне. Причина пишется после выбора и мотивом "
+        "не считается. Слово роли, основа и ссылка на поведение — механические признаки английского текста.",
+        "**Следование за точностью.** Лучшего по способностям среди одинаковых агентов нет, поэтому проверяем, "
+        "следует ли голос за видимой точностью. Сырая ошибка — то, что агент мог сравнить; поправка на окно вычитает "
+        "среднюю ошибку того же окна по запускам условия. Уровень сравнения — ошибки, перемешанные между агентами "
+        "внутри запуска; p односторонний. τ с точностью сравнивает порядок голосующего с порядком остальных "
+        "агентов по ошибке и усредняется по голосующим.",
         "**Контроль `solo`.** Те же агенты, окна и ротация, но без ролей, исполнителей и сообщений: "
         "каждый делает свой прогноз один и видит только свои итоги. MASE — ошибка относительно "
         "наивного «как на прошлой неделе»; меньше 1 — лучше наивного.",
         "**ΔQ.** MASE одиночки − MASE группы на одном окне: положительное значение — организованная "
         "группа ошибается меньше. Пары стыкуются повторами: в повторе k раунд r и в группе, и в solo "
         "ведёт один и тот же агент на том же окне (латинский квадрат). Ресурсы при этом не равны: "
-        "группа тратит ещё и на общение, поэтому рядом ступень «независимый ансамбль» — медиана "
+        "группа тратит ещё и на общение, поэтому рядом независимый ансамбль — медиана "
         "прогнозов одиночек на окне против медиан групповых.",
     ]
 
 
+def vote_forms(data):
+    """Голоса запуска по форматам: цифрой и, если есть, с причиной."""
+    forms = [("цифра", data["votes"])]
+    if data.get("reasons"):
+        forms.append(("JSON", vote.sign_votes(data["reasons"])))
+    return forms
+
+
 def condition_section(condition, subset):
     agents, lines = run.names(), [f"## Условие `{condition}`", ""]
-    lines += ["| Прогон | Повтор | Статус | Голосование |", "|---|---|---|---|"]
+    lines += ["| Запуск | Повтор | Статус | Голосование |", "|---|---|---|---|"]
     for data in subset:
         lines.append(f"| {data['spec']['id'][:8]} | {data['spec']['repeat']} | {status(data)} | {vote_kind(data)} |")
     lines.append("")
 
-    # Роли: что центры раздают; пространство выбора задано меню
+    # Роли: что организаторы раздают; пространство выбора задано меню
     counts, catalog = {}, run.roles()
     for data in subset:
         for role, count in role_counts(data["rounds"]).items():
@@ -509,9 +792,9 @@ def condition_section(condition, subset):
         lines += ["", f"Не использована ни разу: {', '.join(unused)}."]
     lines += [""]
 
-    # Конвенция: повторяется ли состав ролей у сменяющихся центров
+    # Конвенция: повторяется ли состав ролей у сменяющихся организаторов
     pool = [item for data in subset for item in role_sets(data["rounds"])]
-    lines += ["### Конвенция состава ролей", "", "| Прогон | Повторы | Случайно (95%) | p |", "|---|---|---|---|"]
+    lines += ["### Конвенция состава ролей", "", "| Запуск | Повторы | Случайно (95%) | p |", "|---|---|---|---|"]
     for data in subset:
         value = convention(data["rounds"], pool)
         p_value = "<0.001" if value["p"] < 0.001 else f"{value['p']:.3f}"
@@ -520,8 +803,8 @@ def condition_section(condition, subset):
     lines += [""]
 
     # Закрепление: держатся ли роли за агентами
-    lines += ["### Закрепление ролей (уклад)", "",
-              "| Прогон | Повторы | к случайному | Случайно (95%) | p |", "|---|---|---|---|---|"]
+    lines += ["### Закрепление ролей", "",
+              "| Запуск | Повторы | к случайному | Случайно (95%) | p |", "|---|---|---|---|---|"]
     for data in subset:
         value = fixation(data["rounds"])
         p_value = "<0.001" if value["p"] < 0.001 else f"{value['p']:.3f}"
@@ -531,37 +814,57 @@ def condition_section(condition, subset):
     lines.append("")
 
     # Голосование: какая иерархия выстроилась
-    lines += ["### Голосование (делегирование)", "",
-              "| Прогон | Порядок по победам | h | Случайно (95%) | Единодушных пар | Взаимность τ | τ группы с точностью | τ группы с судьёй |",
-              "|---|---|---|---|---|---|---|---|"]
+    lines += ["### Голосование", "",
+              "| Запуск | Голос | Порядок по победам | h | Случайно (95%) | Единодушных пар | τ взаимности | Она же при случайных порядках (95%) | Она же при общих предпочтениях (95%) | p | τ группы с точностью | τ группы с судьёй |",
+              "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     chance = linearity_null(agents)
+    tests, vote_sets = {}, {}
     for data in subset:
-        wins, scores, undecided = majority(data["votes"], agents)
-        rows, group, tau_group = agreement(data)
-        unanimous = sum(1 for score in scores.values() if max(score) == len(agents) - 2)
-        split = f" (+{undecided} без большинства)" if undecided else ""
-        lines.append(f"| {data['spec']['id'][:8]} | {' > '.join(group)} | {linearity(wins):.2f} "
-                     f"| {chance['mean']:.2f} ({chance['low']:.2f}–{chance['high']:.2f}) "
-                     f"| {unanimous} из {len(scores)}{split} "
-                     f"| {fmt(reciprocity(data['votes']))} "
-                     f"| {fmt(tau_group['accuracy'])} | {fmt(tau_group['judge'])} |")
+        for label, votes in vote_forms(data):
+            vote_sets.setdefault(label, []).append(votes)
+            wins, scores, undecided = majority(votes, agents)
+            _, group, tau_group = agreement(data, votes)
+            unanimous = sum(1 for score in scores.values() if max(score) == len(agents) - 2)
+            split = f" (+{undecided} без большинства)" if undecided else ""
+            test = reciprocity_test(votes)
+            tests.setdefault(label, []).append(test)
+            lines.append(f"| {data['spec']['id'][:8]} | {label} | {' > '.join(group)} | {linearity(wins):.2f} "
+                         f"| {chance['mean']:.2f} ({chance['low']:.2f}–{chance['high']:.2f}) "
+                         f"| {unanimous} из {len(scores)}{split} "
+                         f"| {fmt(test['tau'])} | {fmt_interval(test['random'])} | {fmt_interval(test['shared'])} "
+                         f"| {fmt_p(test['p'])} "
+                         f"| {fmt(tau_group['accuracy'])} | {fmt(tau_group['judge'])} |")
     lines.append("")
+    for label, group in tests.items():
+        pooled = pooled_reciprocity(group)
+        lines += [f"Средняя τ взаимности по {pooled['runs']} запуск., голос {label}, равна {pooled['tau']:+.2f}; "
+                  f"случайные порядки дают {fmt_interval(pooled['random'])}, общие предпочтения — "
+                  f"{fmt_interval(pooled['shared'])}, p = {fmt_p(pooled['p'])}.", ""]
+    for label, sets in vote_sets.items():
+        unanimity, leader = unanimity_test(sets, agents), leader_test(sets, agents)
+        null = unanimity["null"]
+        lines += [f"Голос {label}. Единодушных пар в среднем {unanimity['mean']:.1f} из {math.comb(len(agents), 2)}; "
+                  f"случайные голосующие дают {null['mean']:.1f} ({null['low']:.1f}…{null['high']:.1f}), "
+                  f"p = {fmt_p(unanimity['p'])}. Самый частый лидер {leader['leader']}: {leader['count']:.1f} из "
+                  f"{leader['runs']} запусков, p = {fmt_p(leader['p'])}.", ""]
     details = []
     for data in subset:
-        rows = agreement(data)[0]
-        accuracy = tau_range([row.get("accuracy") for row in rows.values()])
-        judge = tau_range([row.get("judge") for row in rows.values()])
-        note = (f"Прогон {data['spec']['id'][:8]}: отдельные голосующие согласны с точностью "
-                f"τ {accuracy}, с судьёй — τ {judge}.")
-        if vote_kind(data) == "логпробы":
-            values = sorted(margins_abs(data["votes"]))
-            note += f" Медианный перевес {values[len(values) // 2]:.1f} логита."
-            transitive = [t for t in (transitivity(v) for v in data["votes"].values()) if t is not None]
-            if transitive:
-                note += (f" Согласованные тройки у отдельных голосующих: {min(transitive):.2f}–"
-                         f"{max(transitive):.2f} (в среднем {sum(transitive) / len(transitive):.2f}).")
-        details.append(note)
-    return lines + details + [""]
+        for label, votes in vote_forms(data):
+            rows = agreement(data, votes)[0]
+            accuracy = tau_range([row.get("accuracy") for row in rows.values()])
+            judge = tau_range([row.get("judge") for row in rows.values()])
+            note = (f"Запуск {data['spec']['id'][:8]}, голос {label}: у отдельных голосующих τ с точностью лежит "
+                    f"в пределах {accuracy}, τ с судьёй — в пределах {judge}.")
+            if vote_kind(data) == "логпробы":
+                if label == "цифра":
+                    values = sorted(margins_abs(votes))
+                    note += f" Медианный перевес {values[len(values) // 2]:.1f} логита."
+                transitive = [t for t in (transitivity(v) for v in votes.values()) if t is not None]
+                if transitive:
+                    note += (f" Согласованные тройки у отдельных голосующих: {min(transitive):.2f}–"
+                             f"{max(transitive):.2f} (в среднем {sum(transitive) / len(transitive):.2f}).")
+            details.append(note)
+    return lines + details + [""] + accuracy_section(subset)
 
 
 def series_section(key, subset):
@@ -577,12 +880,13 @@ def series_section(key, subset):
     if solo:
         lines += solo_section(solo)
     lines += delta_q_section(subset)
+    lines += reasons.section(subset)
     return lines
 
 
 def series_table(data):
     """Список серий с составом: числа разных серий не смешиваются."""
-    lines = ["| Серия | Движок | Судья | Промпты | Протокол | Прогонов |",
+    lines = ["| Серия | Движок | Судья | Промпты | Протокол | Запусков |",
              "|---|---|---|---|---|---|"]
     for key, subset in by_series(data):
         protocol, engine, model = key
@@ -591,14 +895,14 @@ def series_table(data):
     return lines + [""]
 
 
-def report():
-    """Отчёт по всем прогонам в Markdown, отдельными блоками по сериям."""
-    data = runs()
+def report(base=None):
+    """Отчёт по всем запускам в Markdown, отдельными блоками по сериям."""
+    data = runs(base)
     if not data:
-        return "Прогонов с полными раундами и голосами нет."
+        return "Запусков с полными раундами и голосами нет."
     groups = by_series(data)
-    lines = ["# Анализ прогонов", "",
-             f"Прогонов: {len(data)} в сериях: {len(groups)}. Прочерк — значения нет: у судьи не хватает "
+    lines = ["# Анализ запусков", "",
+             f"Запусков: {len(data)} в сериях: {len(groups)}. Прочерк — значения нет: у судьи не хватает "
              "оценок или все они одинаковы.", "",
              "Серия — это протокол, движок и модель: другой протокол означает другой набор промптов, "
              "другая модель — другое распределение голосов и ошибок. Поэтому все числа считаются внутри "
@@ -608,12 +912,9 @@ def report():
     for item in legend():
         lines.append(f"- {item}")
     lines.append("")
-    lines += ["Термины — обзора «Социумы ИИ-агентов» (literature-review.up.railway.app): закрепление "
-              "ролей — элемент уклада, повтор состава ролей — конвенция, голосование — делегирование. "
-              "Задано средой: меню шести ролей, ротация центра латинским квадратом, условия видимости, "
-              "чередование порядка пар. Наблюдается: назначенные роли, прогнозы, голоса по логпробам — "
-              "события среды, а не самоотчёты. Интерпретация — за человеком: какие гипотезы числа "
-              "поддерживают и каким механизмом, решает он.", ""]
+    lines += ["Задано средой: меню шести ролей, ротация организатора латинским квадратом, условия видимости, "
+              "чередование порядка пар. Наблюдается: назначенные роли, прогнозы, голоса по логпробам. "
+              "Какие гипотезы числа поддерживают и каким механизмом, решает человек.", ""]
     for key, subset in groups:
         lines += series_section(key, subset)
     lines.append(f"p — перестановочный тест (закрепление, состав, линейность) или точный знаковый тест "

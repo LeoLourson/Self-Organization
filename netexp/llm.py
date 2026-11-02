@@ -34,9 +34,37 @@ def timeout(engine):
     """Предел ожидания одного ответа: движок может задать свой, по умолчанию 180 с.
 
     Локальной модели без GPU мало 180 с: рассуждающая модель пишет больше тысячи токенов
-    на ответ, и запрос с длинной историей не укладывается в предел, обрывая прогон.
+    на ответ, и запрос с длинной историей не укладывается в предел, обрывая запуск.
     """
     return engine.get("timeout", 180)
+
+
+REASONING_FIELDS = ("reasoning", "reasoning_content", "thinking")
+
+
+def provider_of(response):
+    """Кто ответил: маршрутизатор пишет имя провайдера в ответ; у прямых API поля нет."""
+    return getattr(response, "provider", None)
+
+
+def usage_of(response):
+    """Расход запроса вместе с именем провайдера: запись в учёте показывает, кто отвечал."""
+    usage = response.usage.model_dump() if response.usage else {}
+    provider = provider_of(response)
+    return {**usage, "provider": provider} if provider else usage
+
+
+def reasoning_of(response):
+    """Рассуждение модели в ответе: поле с текстом, если оно есть, и счётчик токенов из usage.
+
+    Имя поля у маршрутизаторов и провайдеров разное, поэтому перебираем известные.
+    Счётчик без текста значит, что модель рассуждала, но текст скрыт.
+    """
+    message = response.choices[0].message
+    field = next((name for name in REASONING_FIELDS if getattr(message, name, None)), None)
+    details = getattr(response.usage, "completion_tokens_details", None)
+    return {"field": field, "text": getattr(message, field) if field else None,
+            "tokens": getattr(details, "reasoning_tokens", None)}
 
 
 def _cached(key, model, produce, logprob_id=None):
@@ -89,7 +117,7 @@ def number_logprobs(choice, limit=80):
 
 
 def call(profile, scope, messages):
-    """Ответ модели на messages; может быть пустой строкой. scope — ID запроса прогона: повтор берётся из кэша."""
+    """Ответ модели на messages; может быть пустой строкой. scope — ID запроса запуска: повтор берётся из кэша."""
     store.check_stop()
     cfg = store.config()
     api, engine = cfg["api"], cfg["engines"][profile["engine"]]
@@ -110,7 +138,7 @@ def call(profile, scope, messages):
             summary = number_logprobs(choice)
         except (AttributeError, TypeError, ValueError):
             summary = None  # формат логитов зависит от сервера; без них прогноз остаётся без уверенности
-        return answer, response.usage.model_dump() if response.usage else {}, summary
+        return answer, usage_of(response), summary
 
     return _cached(key, profile["model"], produce, scope)
 
@@ -155,8 +183,35 @@ def choice_logprobs(choice, candidates=("1", "2")):
     return values
 
 
-def ballot(profile, scope, messages):
+def with_reasoning(settings):
+    """extra_body с включённым рассуждением: привязка к провайдеру из профиля сохраняется."""
+    return {**settings.get("extra_body", {}), "reasoning": {"enabled": True}}
+
+
+def reasoning_report(answer):
+    """Что ответ показывает о рассуждении: text — текст, hidden — только счётчик токенов, none — ничего."""
+    thought = answer.get("reasoning") or {}
+    status = "text" if thought.get("text") else "hidden" if thought.get("tokens") else "none"
+    return {"status": status, "field": thought.get("field"), "tokens": thought.get("tokens"),
+            "sample": (thought.get("text") or "")[:300] or None}
+
+
+def reasoning_probe(profile, scope, messages):
+    """Голос с явно включённым рассуждением; rejected — провайдер не принял такой запрос."""
+    from openai import BadRequestError, UnprocessableEntityError
+    try:
+        answer = ballot(profile, scope, messages, True)
+    except (BadRequestError, UnprocessableEntityError) as error:
+        return {"status": "rejected", "error": str(error)[:300]}
+    logprob = answer["logprob"]
+    return {**reasoning_report(answer), "provider": answer.get("provider"), "format": answer.get("format"),
+            "logprobs": logprob["1"] is not None and logprob["2"] is not None}
+
+
+def ballot(profile, scope, messages, reasoning=False):
     """Голос структурированным ответом: выбор и причина одним JSON, логпробы цифр — если их дают.
+
+    reasoning включает рассуждение; в голосах серии его нет, только в пробе check-vote.
 
     Строгая схема json_schema требует поля choice (1 или 2) и reason; провайдер,
     который её отвергает, получает json_object с тем же требованием, уже записанным
@@ -165,7 +220,8 @@ def ballot(profile, scope, messages):
     """
     store.check_stop()
     engine = store.config()["engines"][profile["engine"]]
-    key = hashlib.sha256(json.dumps(["ballot", scope, profile["engine"], profile["model"], profile["settings"],
+    kind = "ballot-reasoning-pinned" if reasoning else "ballot"
+    key = hashlib.sha256(json.dumps([kind, scope, profile["engine"], profile["model"], profile["settings"],
                                      messages], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
     def produce():
@@ -176,16 +232,21 @@ def ballot(profile, scope, messages):
         with OpenAI(api_key=api_key, base_url=base_url, timeout=timeout(engine), max_retries=0) as client:
             request = {"model": profile["model"], "messages": messages,
                        "logprobs": True, "top_logprobs": 20, **settings}
+            if reasoning:
+                request["extra_body"] = with_reasoning(settings)
+            used = "schema"
             try:
                 response = client.chat.completions.create(**request, response_format={
                     "type": "json_schema",
                     "json_schema": {"name": "organizer_vote", "strict": True, "schema": BALLOT_SCHEMA}})
             except (BadRequestError, UnprocessableEntityError):
+                used = "object"
                 response = client.chat.completions.create(**request, response_format={"type": "json_object"})
         choice = response.choices[0]
         content = (choice.message.content or "").strip()
-        return json.dumps({"content": content, "logprob": choice_logprobs(choice)}, ensure_ascii=False), \
-            response.usage.model_dump() if response.usage else {}, None
+        return json.dumps({"content": content, "logprob": choice_logprobs(choice), "provider": provider_of(response),
+                           "format": used, "reasoning": reasoning_of(response)},
+                          ensure_ascii=False), usage_of(response), None
 
     return json.loads(_cached(key, profile["model"], produce))
 
@@ -243,7 +304,8 @@ def choice(profile, scope, messages, candidates):
             response = client.chat.completions.create(model=profile["model"], messages=messages,
                                                       max_tokens=2, logprobs=True, top_logprobs=20,
                                                       **settings)
-        return json.dumps(first_token_logprobs(response, candidates)), \
-            response.usage.model_dump() if response.usage else {}, None
+        values = first_token_logprobs(response, candidates)
+        provider = provider_of(response)
+        return json.dumps({**values, "provider": provider} if provider else values), usage_of(response), None
 
     return json.loads(_cached(key, profile["model"], produce))

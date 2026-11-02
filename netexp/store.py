@@ -30,7 +30,7 @@ def config():
 
 
 def profile(name):
-    """Профиль модели из config.json с проверкой, что по нему можно запускать прогон."""
+    """Профиль модели из config.json с проверкой, что по нему можно запускать запуск."""
     cfg = config()
     value = copy.deepcopy(cfg["profiles"][name])
     if value.get("transport") == "api":
@@ -48,7 +48,8 @@ def profile(name):
     return {"id": name, **value}
 
 
-PROTOCOL_FIELDS = ("agents", "horizon", "history_weeks", "first_origin", "worker_words", "task_words", "data")
+PROTOCOL_FIELDS = ("agents", "horizon", "history_weeks", "first_origin", "worker_words", "task_words",
+                   "debrief_words", "reason_words", "control_repeats", "data")
 
 
 def protocol_digest():
@@ -56,7 +57,7 @@ def protocol_digest():
 
     Переводы строк приводятся к LF: при core.autocrlf=true git переписывает файлы
     переводом строк при каждом checkout, агенты же видят одни и те же токены.
-    Без этого хеш менялся от checkout к checkout, и начатый прогон нельзя было
+    Без этого хеш менялся от checkout к checkout, и начатый запуск нельзя было
     продолжить («Протокол изменён»), хотя протокол тот же.
     """
     cfg = config()

@@ -1,1 +1,1 @@
-The forecast rounds are over. Briefly, in 2–3 sentences, note for yourself what you took from the group's work.
+The forecast rounds are over. Briefly, in 2–3 sentences, at most {words} words, note for yourself what you took from the group's work.
